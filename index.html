@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>AWS Architecture & Cost Planner</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- ── TYPOGRAPHY ── -->
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Fira+Code:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+
+<style>
+/* ═══════════════════════════════════════════════
+   DESIGN TOKENS
+═══════════════════════════════════════════════ */
+:root{
+  /* ── AWS Brand Palette ── */
+  --amber:#FF9900;
+  --amber-10:rgba(255,153,0,0.10); --amber-20:rgba(255,153,0,0.20);
+  --amber-glow:rgba(255,153,0,0.32);
+  /* Blue kept only for secondary data (rings, docs links) — NOT for CTAs */
+  --blue:#00A8E1; --blue-10:rgba(0,168,225,0.10);
+  --green:#06D6A0; --danger:#FF4D6D; --danger-10:rgba(255,77,109,0.10);
+
+  /* ── AWS Console-matched backgrounds ── */
+  --bg:#0F1115;                           /* near-black, matches AWS Console dark */
+  --squid:#232F3E;                        /* AWS Squid Ink — card/panel surfaces   */
+  --bg-panel:rgba(20,26,38,0.95);
+  --bg-surface:rgba(35,47,62,0.55);       /* Squid Ink tint for interactive surfaces */
+  --bg-hover:rgba(255,153,0,0.06);        /* amber hover — not grey */
+
+  /* ── Borders ── */
+  --bd:rgba(255,255,255,0.072);
+  --bd-amber:rgba(255,153,0,0.30);
+  --bd-blue:rgba(0,168,225,0.20);
+
+  /* ── Text — AWS Console contrast ratios ── */
+  --tx-1:#D5DBDB;   /* primary text — AWS light grey */
+  --tx-2:#8B9CA4;   /* secondary */
+  --tx-3:#5A6877;   /* muted / labels */
+
+  /* Eco colours */
+  --eco-A:#00E676; --eco-B:#69F0AE; --eco-C:#FFD740; --eco-D:#FF6D00; --eco-F:#FF1744;
+
+  /* Typography */
+  --f-head:'Sora',sans-serif;
+  --f-body:'Outfit',sans-serif;
+  --f-num:'Space Grotesk',sans-serif;
+  --f-code:'Fira Code',monospace;
+
+  /* Timing */
+  --t-fast:0.18s; --t-mid:0.32s; --t-slow:0.5s;
+  --ease-out:cubic-bezier(0.22,1,0.36,1);
+}
+
+/* ── Reset ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--tx-1);}
+body{font-family:var(--f-body);font-size:13px;line-height:1.6;}
+
+/* ── Scanlines ── */
+body::after{content:'';position:fixed;inset:0;z-index:9999;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.022) 2px,rgba(0,0,0,0.022) 4px);}
+
+/* ── Cosmos ── */
+.cosmos{position:fixed;inset:0;z-index:0;
+  background:radial-gradient(ellipse 65% 45% at 15% -5%,rgba(255,153,0,0.05) 0%,transparent 55%),
+             radial-gradient(ellipse 55% 40% at 88% 100%,rgba(35,47,62,0.6) 0%,transparent 55%),#0F1115;}
+.stars{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;}
+.star{position:absolute;border-radius:50%;background:#fff;animation:twinkle var(--dur,3s) ease-in-out infinite alternate;opacity:var(--op,.1);}
+@keyframes twinkle{from{opacity:var(--op);}to{opacity:calc(var(--op)*0.15);}}
+
+/* ═══════════════════════════════════════════════
+   COCKPIT SHELL — 3 columns, fixed viewport
+═══════════════════════════════════════════════ */
+#cockpit{
+  position:relative;z-index:10;
+  display:grid;
+  grid-template-columns:340px 1fr 320px;
+  grid-template-rows:56px 1fr;
+  height:100vh;
+  overflow:hidden;
+}
+
+/* ═══════════════════════════════════════════════
+   GLOBAL HEADER
+═══════════════════════════════════════════════ */
+#header{
+  grid-column:1/-1;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;
+  background:rgba(15,17,21,0.97);
+  border-bottom:2px solid var(--amber);   /* AWS orange accent line */
+  backdrop-filter:blur(24px);
+  z-index:100;
+  height:56px;
+}
+.logo-area{display:flex;align-items:center;gap:12px;}
+.aws-svg{height:36px;width:auto;filter:drop-shadow(0 0 10px var(--amber-glow));}
+.aws-badge{font-family:var(--f-body);font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--amber);background:rgba(255,153,0,.10);border:1px solid rgba(255,153,0,.25);border-radius:4px;padding:2px 7px;white-space:nowrap;}
+.hd-sep{width:1px;height:28px;background:var(--bd);}
+.hd-title{font-family:var(--f-head);font-size:14px;font-weight:800;letter-spacing:-.01em;color:var(--tx-1);}
+.hd-sub{font-family:var(--f-body);font-size:10px;color:var(--tx-3);letter-spacing:.01em;margin-top:1px;}
+.hd-right{display:flex;align-items:center;gap:10px;}
+.hd-pill{display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:var(--bg-surface);border:1px solid var(--bd);font-family:var(--f-body);font-size:10px;color:var(--tx-2);}
+.dot{width:5px;height:5px;border-radius:50%;}
+.dot-g{background:#3FB950;box-shadow:0 0 5px #3FB950;animation:blink 2s ease-in-out infinite;}
+.dot-a{background:var(--amber);box-shadow:0 0 5px var(--amber);animation:blink 1.6s ease-in-out infinite;}
+.dot-r{background:var(--danger);box-shadow:0 0 6px var(--danger);animation:blink .7s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.25;}}
+#hd-clock{font-family:var(--f-code);font-size:11px;color:var(--amber);letter-spacing:.08em;}
+
+/* ═══════════════════════════════════════════════
+   SHARED PANEL PRIMITIVES
+═══════════════════════════════════════════════ */
+.panel-col{display:flex;flex-direction:column;overflow:hidden;}
+.pane-hd{padding:11px 16px 9px;border-bottom:1px solid var(--bd);flex-shrink:0;}
+.pane-eyebrow{font-family:var(--f-body);font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.14em;color:var(--tx-3);margin-bottom:2px;}
+.pane-title{font-family:var(--f-head);font-size:13px;font-weight:700;color:var(--tx-1);}
+
+/* Scrollable inner */
+.scroll-inner{flex:1;overflow-y:auto;overflow-x:hidden;}
+.scroll-inner::-webkit-scrollbar{width:2px;}
+.scroll-inner::-webkit-scrollbar-thumb{background:var(--amber-10);border-radius:2px;}
+@media(max-width:900px){
+  .scroll-inner{flex:none;overflow-y:visible;max-height:none;}
+}
+
+/* Generic section block */
+.sec{padding:12px 14px;border-bottom:1px solid var(--bd);}
+.sec-lbl{font-family:var(--f-body);font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.14em;color:var(--tx-3);margin-bottom:8px;}
+
+/* ═══════════════════════════════════════════════
+   LEFT — CHAT
+═══════════════════════════════════════════════ */
+#col-chat{
+  background:rgba(20,26,38,0.92);
+  border-right:1px solid var(--bd);
+  backdrop-filter:blur(24px);
+}
+.greet{
+  margin:10px 14px 0;
+  background:linear-gradient(135deg,rgba(255,153,0,.08),rgba(255,153,0,.02));
+  border:1px solid var(--bd-amber);border-radius:3px 14px 14px 14px;
+  padding:10px 13px;font-family:var(--f-body);font-size:12px;line-height:1.65;color:#C9D1D9;flex-shrink:0;
+}
+.greet .hi{color:var(--amber);font-weight:600;}
+.chip-bar{display:flex;flex-wrap:wrap;gap:4px;padding:8px 14px;flex-shrink:0;}
+.chip{
+  font-family:var(--f-body);font-size:9.5px;font-weight:500;padding:3px 10px;border-radius:999px;
+  background:var(--bg-surface);border:1px solid var(--bd);color:var(--tx-3);
+  cursor:pointer;transition:background var(--t-fast),border-color var(--t-fast),color var(--t-fast);
+  white-space:nowrap;
+}
+.chip:hover{background:var(--amber-10);border-color:var(--bd-amber);color:var(--amber);}
+
+/* Budget + Spike rows */
+.ctrl-row{display:flex;align-items:center;gap:7px;padding:6px 14px;flex-shrink:0;}
+.ctrl-lbl{font-family:var(--f-body);font-size:9.5px;color:var(--tx-3);white-space:nowrap;}
+.ctrl-inp{
+  flex:1;background:var(--bg-surface);border:1px solid var(--bd);border-radius:7px;
+  padding:5px 9px;font-family:var(--f-code);font-size:12px;color:var(--amber);outline:none;
+  transition:border-color var(--t-fast);
+}
+.ctrl-inp:focus{border-color:var(--bd-amber);}
+.spike-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:7px 14px;flex-shrink:0;
+  background:rgba(255,77,109,.04);
+  border-top:1px solid rgba(255,77,109,.08);border-bottom:1px solid rgba(255,77,109,.08);
+}
+.spike-lbl{font-family:var(--f-body);font-size:9.5px;font-weight:600;color:#FF9A9A;display:flex;align-items:center;gap:6px;}
+.spike-chip{font-family:var(--f-code);font-size:8.5px;padding:2px 7px;border-radius:4px;background:rgba(255,77,109,.14);border:1px solid rgba(255,77,109,.3);color:var(--danger);display:none;}
+.spike-chip.on{display:inline;}
+/* Toggle */
+.tog{position:relative;width:38px;height:20px;display:inline-block;}
+.tog input{opacity:0;width:0;height:0;}
+.tog-sl{position:absolute;cursor:pointer;inset:0;background:rgba(255,255,255,.07);border:1px solid rgba(255,77,109,.25);border-radius:20px;transition:.28s;}
+.tog-sl::before{content:'';position:absolute;width:14px;height:14px;left:2px;bottom:2px;background:var(--tx-3);border-radius:50%;transition:.28s;}
+input:checked+.tog-sl{background:rgba(255,77,109,.22);border-color:var(--danger);box-shadow:0 0 9px rgba(255,77,109,.25);}
+input:checked+.tog-sl::before{transform:translateX(18px);background:var(--danger);box-shadow:0 0 5px var(--danger);}
+
+/* Feed */
+#feed{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:9px;scroll-behavior:smooth;}
+#feed::-webkit-scrollbar{width:2px;}
+#feed::-webkit-scrollbar-thumb{background:var(--amber-10);}
+.msg{display:flex;gap:7px;animation:msgIn var(--t-mid) var(--ease-out) both;}
+@keyframes msgIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+.av{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:10px;font-weight:700;}
+.av-ai{background:linear-gradient(135deg,#FF9900,#ffb84d);color:#07080F;}
+.av-u{background:rgba(255,255,255,.07);color:var(--tx-2);}
+.mb{flex:1;}
+.mw{font-family:var(--f-body);font-size:8.5px;color:var(--tx-3);margin-bottom:2px;text-transform:uppercase;letter-spacing:.06em;}
+.mt{background:var(--bg-surface);border:1px solid var(--bd);border-radius:3px 11px 11px 11px;padding:8px 12px;font-family:var(--f-body);font-size:11.5px;line-height:1.65;color:#C9D1D9;}
+.msg.u .mt{background:rgba(255,153,0,.07);border-color:rgba(255,153,0,.18);border-radius:11px 3px 11px 11px;color:#E6C876;}
+.msg.u{flex-direction:row-reverse;}
+.msg.u .mw{text-align:right;}
+.dots{display:flex;gap:4px;padding:9px 12px;}
+.dots span{width:5px;height:5px;border-radius:50%;background:var(--amber);opacity:.7;animation:dot 1.2s ease-in-out infinite;}
+.dots span:nth-child(2){animation-delay:.22s;}.dots span:nth-child(3){animation-delay:.44s;}
+@keyframes dot{0%,80%,100%{transform:translateY(0);}40%{transform:translateY(-5px);}}
+
+/* Chat input */
+.chat-bar{padding:9px 12px;border-top:1px solid var(--bd);display:flex;gap:6px;align-items:flex-end;flex-shrink:0;background:rgba(15,17,21,.8);}
+#usr-in{flex:1;background:var(--bg-surface);border:1px solid var(--bd);border-radius:11px;padding:7px 12px;font-family:var(--f-body);font-size:12px;color:var(--tx-1);resize:none;max-height:88px;min-height:34px;outline:none;transition:border-color var(--t-fast),box-shadow var(--t-fast);line-height:1.5;}
+#usr-in::placeholder{color:var(--tx-3);}
+#usr-in:focus{border-color:var(--bd-amber);box-shadow:0 0 0 2px rgba(255,153,0,.08);}
+#send-btn{width:34px;height:34px;border-radius:9px;flex-shrink:0;background:#FF9900;border:none;cursor:pointer;display:grid;place-items:center;transition:transform var(--t-fast),box-shadow var(--t-fast);box-shadow:0 0 12px rgba(255,153,0,.28);}
+#send-btn:hover{transform:translateY(-2px);box-shadow:0 4px 18px rgba(255,153,0,.50);}
+#send-btn:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none;}
+
+/* ═══════════════════════════════════════════════
+   CENTER — CANVAS
+═══════════════════════════════════════════════ */
+#col-canvas{
+  background:rgba(15,17,21,0.80);
+  border-right:1px solid var(--bd);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.cv-topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:9px 18px;border-bottom:1px solid var(--bd);flex-shrink:0;background:rgba(7,8,15,.5);
+}
+.cv-svc{font-family:var(--f-head);font-size:12px;font-weight:700;color:var(--amber);letter-spacing:.07em;text-shadow:0 0 12px var(--amber-glow);min-width:140px;}
+.cv-status{display:flex;align-items:center;gap:5px;font-family:var(--f-body);font-size:9.5px;color:var(--tx-3);background:var(--bg-surface);border:1px solid var(--bd);padding:2px 9px;border-radius:999px;}
+.tf-tabs{display:flex;gap:3px;}
+.tf-tab{font-family:var(--f-code);font-size:9.5px;padding:2px 9px;border-radius:5px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--bd);color:var(--tx-3);transition:all var(--t-fast);}
+.tf-tab.on{background:var(--amber-10);border-color:var(--bd-amber);color:var(--amber);}
+
+/* Canvas viewport */
+#live-cv{flex:1;position:relative;overflow:hidden;min-height:0;}
+#live-cv::before{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(0,168,225,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(0,168,225,.022) 1px,transparent 1px);background-size:38px 38px;pointer-events:none;z-index:0;}
+
+/* Empty */
+#empty-st{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;transition:opacity var(--t-mid);}
+.e-ring{width:68px;height:68px;border-radius:50%;border:2px dashed rgba(0,168,225,.18);display:grid;place-items:center;font-size:24px;animation:float 4s ease-in-out infinite;}
+@keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-9px);}}
+#empty-st p{font-family:var(--f-body);font-size:11.5px;max-width:220px;line-height:1.6;color:var(--tx-3);}
+#empty-st span{color:var(--blue);}
+
+/* SVG Diagram */
+#diag-svg{position:absolute;inset:0;width:100%;height:100%;display:none;z-index:1;}
+.conn-path{fill:none;stroke:url(#cg);stroke-width:1.5;stroke-dasharray:7 5;animation:dash 1.6s linear infinite;filter:drop-shadow(0 0 2.5px rgba(255,153,0,.3));}
+.conn-path.spk{stroke:url(#cg-r);stroke-width:2.5;stroke-dasharray:5 3;animation:dash .55s linear infinite;filter:drop-shadow(0 0 5px rgba(255,77,109,.6));}
+@keyframes dash{to{stroke-dashoffset:-24;}}
+.cv-node{animation:nodeIn var(--t-slow) var(--ease-out) both;animation-delay:var(--nd,0s);}
+@keyframes nodeIn{from{opacity:0;transform:scale(.62) translateY(12px);}to{opacity:1;transform:none;}}
+
+/* Spike overlay */
+#spk-ov{position:absolute;inset:0;z-index:3;pointer-events:none;display:none;background:radial-gradient(ellipse 55% 35% at 50% 50%,rgba(255,77,109,.05) 0%,transparent 70%);}
+#spk-ov.on{display:block;}
+.spk-badge{position:absolute;top:10px;right:10px;background:rgba(255,77,109,.12);border:1px solid rgba(255,77,109,.35);border-radius:7px;padding:5px 11px;font-family:var(--f-code);font-size:9.5px;color:var(--danger);display:flex;align-items:center;gap:5px;animation:msgIn var(--t-mid) var(--ease-out) both;}
+.spk-dot{width:5px;height:5px;border-radius:50%;background:var(--danger);box-shadow:0 0 6px var(--danger);animation:blink .65s ease-in-out infinite;}
+.as-nodes{position:absolute;bottom:12px;left:0;right:0;display:flex;justify-content:center;flex-wrap:wrap;gap:6px;padding:0 14px;}
+.as-n{background:rgba(255,77,109,.07);border:1px solid rgba(255,77,109,.25);border-radius:7px;padding:3px 9px;font-family:var(--f-body);font-size:9px;color:#FF9A9A;display:flex;align-items:center;gap:5px;animation:nodeIn var(--t-mid) var(--ease-out) both;}
+.as-d{width:4px;height:4px;border-radius:50%;background:var(--danger);animation:blink .8s ease-in-out infinite;}
+
+/* Cost band */
+.cost-band{display:flex;align-items:center;gap:12px;padding:8px 18px;border-top:1px solid var(--bd);background:rgba(15,17,21,.7);flex-shrink:0;}
+.cm{display:flex;flex-direction:column;gap:1px;}
+.cm-lbl{font-family:var(--f-body);font-size:8.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--tx-3);}
+.cm-v{font-family:var(--f-num);font-size:14px;font-weight:600;color:var(--amber);transition:color var(--t-fast);}
+.cm-v.spk{color:var(--danger);text-shadow:0 0 7px rgba(255,77,109,.4);}
+.cm-s{font-family:var(--f-body);font-size:8.5px;color:var(--tx-3);}
+.csep{width:1px;height:26px;background:var(--bd);}
+
+/* Canvas footer */
+.cv-foot{display:flex;align-items:center;justify-content:space-between;padding:7px 18px;border-top:1px solid var(--bd);flex-shrink:0;background:rgba(15,17,21,.6);}
+.cv-foot-nm{font-family:var(--f-code);font-size:9px;color:var(--tx-3);}
+
+/* ═══════════════════════════════════════════════
+   RIGHT — FINANCIAL
+═══════════════════════════════════════════════ */
+#col-fin{
+  background:rgba(20,26,38,0.95);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+/* Placeholder */
+.fin-ph{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--tx-3);text-align:center;padding:20px;}
+.fin-ph-ico{font-size:26px;opacity:.4;animation:float 4s ease-in-out infinite;}
+.fin-ph p{font-family:var(--f-body);font-size:11px;line-height:1.6;max-width:210px;}
+
+/* Rings */
+.rings-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.ring-card{background:var(--bg-surface);border:1px solid var(--bd);border-radius:9px;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:4px;transition:border-color var(--t-fast);}
+.ring-card:hover{border-color:rgba(255,153,0,.2);}
+.rc-lbl{font-family:var(--f-body);font-size:8.5px;color:var(--tx-3);text-transform:uppercase;letter-spacing:.1em;text-align:center;}
+.rc-sub{font-family:var(--f-body);font-size:9.5px;color:var(--tx-2);text-align:center;line-height:1.4;}
+.ring-svg{overflow:visible;}
+.r-track{fill:none;stroke:rgba(255,255,255,.055);}
+.r-fill{fill:none;stroke-linecap:round;transition:stroke-dashoffset 1.4s var(--ease-out);}
+.r-val{font-family:var(--f-num);font-weight:700;font-size:19px;fill:var(--amber);text-anchor:middle;dominant-baseline:middle;}
+.r-sub{font-family:var(--f-body);font-size:8.5px;fill:var(--tx-3);text-anchor:middle;dominant-baseline:middle;text-transform:uppercase;letter-spacing:.06em;}
+
+/* Burn table */
+.brt-row{display:flex;align-items:center;justify-content:space-between;padding:5px 9px;border-radius:7px;margin-bottom:3px;background:var(--bg-surface);border:1px solid var(--bd);transition:border-color var(--t-fast);}
+.brt-row:hover{border-color:rgba(255,153,0,.18);}
+.brt-p{font-family:var(--f-body);font-size:11px;color:var(--tx-2);}
+.brt-v{font-family:var(--f-num);font-size:11px;color:var(--amber);font-weight:500;}
+.brt-bar-w{width:48px;height:3px;background:rgba(255,255,255,.06);border-radius:999px;overflow:hidden;margin-left:5px;}
+.brt-bar{height:100%;border-radius:999px;background:#FF9900;transition:width 1s var(--ease-out);}
+.brt-bar.spk{background:linear-gradient(90deg,#FF4D6D,#FF9A9A);}
+
+/* Depletion */
+.depl-box{background:rgba(255,77,109,.05);border:1px solid rgba(255,77,109,.18);border-radius:9px;padding:10px;}
+.depl-ttl{font-family:var(--f-body);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--danger);margin-bottom:7px;display:flex;align-items:center;gap:5px;}
+.depl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;}
+.depl-cell{background:rgba(255,77,109,.05);border:1px solid rgba(255,77,109,.14);border-radius:7px;padding:6px 4px;text-align:center;}
+.depl-n{font-family:var(--f-num);font-size:18px;font-weight:700;color:var(--danger);line-height:1;text-shadow:0 0 10px rgba(255,77,109,.45);}
+.depl-u{font-family:var(--f-body);font-size:8px;color:rgba(255,77,109,.55);text-transform:uppercase;letter-spacing:.1em;margin-top:1px;}
+
+/* Confidence */
+.conf-row{display:flex;align-items:center;gap:8px;}
+.conf-lbl{font-family:var(--f-body);font-size:9.5px;color:var(--tx-3);white-space:nowrap;}
+.conf-trk{flex:1;height:2.5px;background:rgba(255,255,255,.06);border-radius:999px;overflow:hidden;}
+.conf-fill{height:100%;border-radius:999px;background:#FF9900;transition:width 1.2s var(--ease-out);width:0;}
+.conf-pct{font-family:var(--f-code);font-size:10px;color:var(--amber);min-width:30px;text-align:right;}
+
+/* Feature chips */
+.feat-chips{display:flex;flex-wrap:wrap;gap:4px;}
+.fc{font-family:var(--f-code);font-size:8.5px;padding:2px 8px;border-radius:999px;background:var(--bg-surface);border:1px solid var(--bd);color:var(--tx-3);}
+
+/* Why text */
+#why-txt{font-family:var(--f-body);font-size:11px;line-height:1.7;color:var(--tx-2);}
+.docs-lnk{display:inline-flex;align-items:center;gap:4px;font-family:var(--f-body);font-size:10px;font-weight:600;color:var(--blue);text-decoration:none;transition:color var(--t-fast);margin-top:5px;}
+.docs-lnk:hover{color:#48CAE4;}
+
+/* ═══════════════════════════════════════════════
+   ACCORDION
+═══════════════════════════════════════════════ */
+.acc{border-bottom:1px solid var(--bd);}
+.acc-btn{
+  width:100%;display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;cursor:pointer;background:transparent;border:none;
+  font-family:var(--f-body);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.14em;color:var(--tx-3);
+  transition:color var(--t-fast),background var(--t-fast);
+  text-align:left;
+}
+.acc-btn:hover{color:var(--tx-2);background:var(--bg-hover);}
+.acc-btn.open{color:var(--tx-2);}
+.acc-ico{font-size:11px;transition:transform var(--t-fast);}
+.acc-btn.open .acc-ico{transform:rotate(180deg);}
+.acc-body{max-height:0;overflow:hidden;transition:max-height .42s var(--ease-out);}
+.acc-body.open{max-height:800px;}
+.acc-inner{padding:0 14px 12px;}
+
+/* ── Eco widget inside accordion ── */
+.eco-w{background:rgba(0,230,118,.04);border:1px solid rgba(0,230,118,.14);border-radius:9px;padding:10px;}
+.eco-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;}
+.eco-ttl{font-family:var(--f-body);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--eco-A);display:flex;align-items:center;gap:5px;}
+.eco-grade{font-family:var(--f-num);font-size:26px;font-weight:700;line-height:1;text-shadow:0 0 14px currentColor;}
+.eco-bar-r{display:flex;align-items:center;gap:7px;margin-bottom:7px;}
+.eco-trk{flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:999px;overflow:hidden;}
+.eco-fill{height:100%;border-radius:999px;transition:width 1.2s var(--ease-out);width:0;}
+.eco-num{font-family:var(--f-code);font-size:10px;font-weight:600;min-width:36px;text-align:right;}
+.eco-tips{display:flex;flex-direction:column;gap:4px;}
+.eco-tip{display:flex;align-items:flex-start;gap:6px;font-family:var(--f-body);font-size:10px;line-height:1.55;color:var(--tx-2);}
+.eco-td{width:3px;height:3px;border-radius:50%;flex-shrink:0;margin-top:7px;}
+.eco-rgn{font-family:var(--f-code);font-size:8.5px;color:rgba(0,230,118,.45);margin-top:6px;}
+
+/* ── Well-Architected inside accordion ── */
+.wa-p{border-radius:8px;padding:8px 9px;margin-bottom:5px;border:1px solid var(--bd);}
+.wa-p.sec{background:rgba(0,168,225,.04);border-color:rgba(0,168,225,.18);}
+.wa-p.cst{background:rgba(255,153,0,.04);border-color:rgba(255,153,0,.18);}
+.wa-p.rel{background:rgba(6,214,160,.04);border-color:rgba(6,214,160,.18);}
+.wa-ph{display:flex;align-items:center;gap:6px;margin-bottom:5px;}
+.wa-pico{font-size:11px;}
+.wa-pnm{font-family:var(--f-body);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;}
+.wa-p.sec .wa-pnm{color:var(--blue);}
+.wa-p.cst .wa-pnm{color:var(--amber);}
+.wa-p.rel .wa-pnm{color:var(--green);}
+.wa-sc{margin-left:auto;font-family:var(--f-code);font-size:10px;font-weight:600;}
+.wa-item{display:flex;align-items:flex-start;gap:5px;font-family:var(--f-body);font-size:10px;color:var(--tx-2);line-height:1.55;margin-bottom:2px;}
+.wa-d{width:3px;height:3px;border-radius:50%;flex-shrink:0;margin-top:6px;}
+.wa-d.s{background:var(--blue);}
+.wa-d.c{background:var(--amber);}
+.wa-d.r{background:var(--green);}
+
+/* ═══════════════════════════════════════════════
+   IAC MODAL
+═══════════════════════════════════════════════ */
+#iac-modal{position:fixed;inset:0;z-index:10000;display:none;align-items:center;justify-content:center;background:rgba(7,8,15,.88);backdrop-filter:blur(14px);}
+#iac-modal.on{display:flex;}
+.iac-panel{width:min(720px,94vw);max-height:88vh;background:rgba(10,12,22,.98);border:1px solid rgba(0,168,225,.28);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 0 60px rgba(0,168,225,.09);animation:modalIn var(--t-mid) var(--ease-out) both;}
+@keyframes modalIn{from{opacity:0;transform:scale(.93) translateY(18px);}to{opacity:1;transform:none;}}
+.iac-mhd{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--bd);background:rgba(0,168,225,.04);flex-shrink:0;}
+.iac-mttl{font-family:var(--f-head);font-size:12px;font-weight:700;color:var(--blue);letter-spacing:.08em;}
+.iac-mmeta{font-family:var(--f-body);font-size:9.5px;color:var(--tx-3);margin-top:2px;}
+.iac-acts{display:flex;gap:7px;}
+.iac-ab{font-family:var(--f-body);font-size:10px;font-weight:600;padding:4px 11px;border-radius:7px;cursor:pointer;border:none;display:flex;align-items:center;gap:5px;transition:all var(--t-fast);}
+.iac-cp{background:var(--blue-10);border:1px solid var(--bd-blue);color:var(--blue);}
+.iac-cp:hover{background:rgba(0,168,225,.2);}
+.iac-dl{background:var(--amber-10);border:1px solid var(--bd-amber);color:var(--amber);}
+.iac-dl:hover{background:rgba(255,153,0,.2);}
+.iac-cl{background:var(--bg-surface);border:1px solid var(--bd);color:var(--tx-2);width:26px;height:26px;border-radius:7px;display:grid;place-items:center;cursor:pointer;font-size:13px;}
+.iac-cl:hover{background:var(--danger-10);border-color:rgba(255,77,109,.3);color:var(--danger);}
+.iac-cw{flex:1;overflow:auto;padding:0;}
+.iac-cw::-webkit-scrollbar{width:4px;height:4px;}
+.iac-cw::-webkit-scrollbar-thumb{background:rgba(0,168,225,.22);}
+#iac-code{font-family:var(--f-code);font-size:11.5px;line-height:1.8;color:#C9D1D9;padding:18px;white-space:pre;display:block;}
+.iac-ft{display:flex;align-items:center;justify-content:space-between;padding:8px 18px;border-top:1px solid var(--bd);background:rgba(0,168,225,.025);flex-shrink:0;}
+.iac-ftn{font-family:var(--f-body);font-size:9.5px;color:var(--tx-3);display:flex;align-items:center;gap:5px;}
+.iac-rc{font-family:var(--f-code);font-size:10px;color:var(--blue);}
+
+/* ═══════════════════════════════════════════════
+   MICRO-ANIMATIONS — result reveal
+═══════════════════════════════════════════════ */
+.reveal{animation:revealIn var(--t-mid) var(--ease-out) both;}
+@keyframes revealIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+.reveal-fast{animation:revealIn var(--t-fast) var(--ease-out) both;}
+
+/* stagger helper */
+.s1{animation-delay:.05s;}
+.s2{animation-delay:.10s;}
+.s3{animation-delay:.15s;}
+.s4{animation-delay:.20s;}
+.s5{animation-delay:.25s;}
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE — single column at ≤ 900px
+═══════════════════════════════════════════════ */
+@media (max-width:900px){
+  html,body{overflow-y:auto;overflow-x:hidden;}
+
+  #cockpit{
+    grid-template-columns:1fr;
+    grid-template-rows:auto;   /* rows auto-size to content */
+    height:auto;
+    min-height:100vh;
+    overflow:visible;
+  }
+
+  /* Header wraps to two lines on narrow screens */
+  #header{
+    height:auto;
+    padding:10px 16px;
+    flex-wrap:wrap;
+    gap:8px;
+    /* keep the amber bottom border */
+  }
+  .hd-right{gap:8px;}
+  #hd-clock{display:none;}           /* clock hidden — saves space */
+
+  /* Left chat column: fixed tall strip */
+  #col-chat{
+    min-height:480px;
+    border-right:none;
+    border-bottom:1px solid var(--bd);
+  }
+
+  /* Center canvas: tall enough to see the diagram */
+  #col-canvas{
+    min-height:420px;
+    border-right:none;
+    border-bottom:1px solid var(--bd);
+  }
+  #live-cv{min-height:280px;}
+
+  /* Cost band wraps on small screens */
+  .cost-band{flex-wrap:wrap;gap:10px 16px;padding:10px 14px;}
+  .csep{display:none;}
+
+  /* Right finance column: auto height */
+  #col-fin{min-height:auto;}
+  #fin-live{max-height:none;overflow:visible;}
+
+  /* Rings side-by-side stays fine at narrow widths */
+  .rings-row{grid-template-columns:1fr 1fr;}
+
+  /* Depletion grid: 3 cells still fit */
+  .depl-grid{grid-template-columns:repeat(3,1fr);}
+
+  /* Accordion bodies can grow taller */
+  .acc-body.open{max-height:1200px;}
+
+  /* IaC modal full-screen on mobile */
+  .iac-panel{width:96vw;max-height:92vh;}
+
+  /* Tooltip direction fix — keep tooltips above on bottom rows */
+  .tip-txt{left:0;right:auto;transform:none;}
+
+  /* Spike row keeps its own line */
+  .spike-row{flex-wrap:nowrap;}
+
+  /* Chip bar scrolls horizontally if too many chips */
+  .chip-bar{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;}
+  .chip-bar::-webkit-scrollbar{height:2px;}
+  .chip-bar::-webkit-scrollbar-thumb{background:var(--amber-10);}
+}
+
+/* ── Extra small: ≤ 480px ── */
+@media (max-width:480px){
+  .hd-title{font-size:12px;}
+  .hd-sub{display:none;}
+  .aws-badge{display:none;}
+  .logo-area{gap:8px;}
+  .rings-row{grid-template-columns:1fr;} /* stack rings vertically */
+  .cv-topbar{flex-direction:column;align-items:flex-start;gap:6px;padding:8px 14px;}
+  .tf-tabs{width:100%;}
+  .tf-tab{flex:1;text-align:center;}
+}
+
+/* ── Input focus-glow on page load ── */
+@keyframes inputPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,153,0,0);}
+  50%{box-shadow:0 0 0 4px rgba(255,153,0,0.18),0 0 16px rgba(255,153,0,0.12);}
+}
+#usr-in{animation:inputPulse 2.4s ease-in-out 0.8s 3;}
+#usr-in:focus{animation:none;border-color:var(--bd-amber);box-shadow:0 0 0 3px rgba(255,153,0,0.14);}
+
+/* ── IaC button — secondary/text-link style ── */
+.iac-btn{
+  display:flex;align-items:center;gap:5px;
+  font-family:var(--f-body);font-size:9.5px;font-weight:500;
+  color:var(--tx-3);background:transparent;border:1px solid var(--bd);
+  border-radius:6px;padding:3px 9px;cursor:pointer;
+  transition:color var(--t-fast),border-color var(--t-fast);
+}
+.iac-btn:hover{color:var(--amber);border-color:var(--bd-amber);}
+.iac-btn:disabled{opacity:.30;cursor:not-allowed;}
+
+/* ── Tooltip ── */
+.tip-wrap{position:relative;display:inline-flex;align-items:center;}
+.tip-ico{
+  width:14px;height:14px;border-radius:50%;border:1px solid var(--tx-3);
+  font-family:var(--f-body);font-size:9px;font-weight:700;color:var(--tx-3);
+  display:inline-grid;place-items:center;cursor:default;
+  transition:border-color var(--t-fast),color var(--t-fast);flex-shrink:0;
+}
+.tip-ico:hover{border-color:var(--amber);color:var(--amber);}
+.tip-txt{
+  position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  white-space:nowrap;pointer-events:none;opacity:0;
+  background:var(--squid);border:1px solid var(--bd-amber);border-radius:7px;
+  padding:5px 10px;font-family:var(--f-body);font-size:10px;line-height:1.5;
+  color:var(--tx-1);max-width:220px;white-space:normal;
+  transition:opacity .18s;z-index:500;
+  box-shadow:0 4px 16px rgba(0,0,0,.5);
+}
+.tip-ico:hover+.tip-txt,.tip-wrap:hover .tip-txt{opacity:1;}
+
+/* ── Panel content transition ── */
+#fin-live,#burn-tbl,.cost-band,.rings-row,.depl-box{
+  transition:opacity 0.25s ease,transform 0.25s ease;
+}
+.panel-updating{opacity:0;transform:translateY(6px);}
+</style>
+</head>
+<body>
+<div class="cosmos"></div>
+<div class="stars" id="stars"></div>
+
+<!-- ═══ NAME MODAL ═══ -->
+<div id="name-modal" role="dialog" aria-modal="true" aria-label="Enter your name"
+  style="position:fixed;inset:0;z-index:20000;display:flex;align-items:center;justify-content:center;background:rgba(15,17,21,0.82);backdrop-filter:blur(16px);">
+  <div style="width:min(400px,90vw);background:#1A2030;border:1px solid rgba(255,153,0,0.30);border-radius:16px;padding:36px 32px;box-shadow:0 0 60px rgba(255,153,0,0.10);animation:modalIn .32s cubic-bezier(0.22,1,0.36,1) both;">
+    <!-- AWS logo mark -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
+      <svg width="48" height="30" viewBox="0 0 80 48" fill="none" aria-hidden="true">
+        <path d="M24.5 34.5C30 40 44 40 50 34.5" stroke="#FF9900" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+        <path d="M48.2 32.2L50.5 34.8L47.6 36.5" stroke="#FF9900" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <text x="4" y="27" font-family="Arial Black,sans-serif" font-weight="900" font-size="22" fill="#FF9900" letter-spacing="-0.5">AWS</text>
+      </svg>
+      <span style="font-family:'Sora',sans-serif;font-size:11px;font-weight:600;color:rgba(255,153,0,0.7);text-transform:uppercase;letter-spacing:.14em;">Architecture &amp; Cost Planner</span>
+    </div>
+    <h2 style="font-family:'Sora',sans-serif;font-size:20px;font-weight:800;color:#F0F6FC;margin-bottom:6px;line-height:1.25;">Welcome! 👋</h2>
+    <p style="font-family:'Outfit',sans-serif;font-size:13px;color:#8B9CA4;margin-bottom:24px;line-height:1.6;">Tell me your name so I can personalise your experience.</p>
+    <label for="name-inp" style="font-family:'Outfit',sans-serif;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:#5A6877;display:block;margin-bottom:7px;">Your name</label>
+    <input id="name-inp" type="text" maxlength="40" autocomplete="given-name" placeholder="e.g. Alex"
+      style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,153,0,0.25);border-radius:9px;padding:11px 14px;font-family:'Outfit',sans-serif;font-size:14px;color:#F0F6FC;outline:none;transition:border-color .18s,box-shadow .18s;"
+      onfocus="this.style.borderColor='#FF9900';this.style.boxShadow='0 0 0 3px rgba(255,153,0,0.14)'"
+      onblur="this.style.borderColor='rgba(255,153,0,0.25)';this.style.boxShadow='none'"
+      onkeydown="if(event.key==='Enter')saveUserName()"/>
+    <button onclick="saveUserName()"
+      style="margin-top:16px;width:100%;padding:12px;background:#FF9900;border:none;border-radius:9px;font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#0F1115;cursor:pointer;transition:box-shadow .18s,transform .18s;box-shadow:0 0 16px rgba(255,153,0,0.28);"
+      onmouseover="this.style.boxShadow='0 4px 20px rgba(255,153,0,0.50)';this.style.transform='translateY(-1px)'"
+      onmouseout="this.style.boxShadow='0 0 16px rgba(255,153,0,0.28)';this.style.transform='none'">
+      Get Started →
+    </button>
+  </div>
+</div>
+
+<!-- ═══ IAC MODAL ═══ -->
+<div id="iac-modal" role="dialog" aria-modal="true">
+  <div class="iac-panel">
+    <div class="iac-mhd">
+      <div>
+        <div class="iac-mttl">☁ AWS CloudFormation Template</div>
+        <div class="iac-mmeta" id="iac-meta">—</div>
+      </div>
+      <div class="iac-acts">
+        <button class="iac-ab iac-cp" onclick="copyIaC()">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy
+        </button>
+        <button class="iac-ab iac-dl" onclick="dlIaC()">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download
+        </button>
+        <button class="iac-cl" onclick="closeIaC()">✕</button>
+      </div>
+    </div>
+    <div class="iac-cw"><code id="iac-code"></code></div>
+    <div class="iac-ft">
+      <span class="iac-ftn">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#00A8E1" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Review before deploying to your AWS account
+      </span>
+      <span class="iac-rc" id="iac-rc">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ COCKPIT ═══ -->
+<div id="cockpit">
+
+  <!-- HEADER -->
+  <div id="header">
+    <div class="logo-area">
+      <svg class="aws-svg" viewBox="0 0 80 48" fill="none" aria-label="AWS">
+        <path d="M24.5 34.5C30 40 44 40 50 34.5" stroke="#FF9900" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+        <path d="M48.2 32.2L50.5 34.8L47.6 36.5" stroke="#FF9900" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <text x="4" y="27" font-family="Arial Black,sans-serif" font-weight="900" font-size="22" fill="#FF9900" letter-spacing="-0.5">AWS</text>
+      </svg>
+      <span class="aws-badge">Powered by AWS</span>
+      <div class="hd-sep"></div>
+      <div>
+        <div class="hd-title">AWS Architecture &amp; Cost Planner</div>
+        <div class="hd-sub">Describe your idea → Get architecture, cost estimate &amp; smart tips</div>
+      </div>
+    </div>
+    <div class="hd-right">
+      <div class="hd-pill"><span class="dot dot-g"></span>LIVE</div>
+      <div class="hd-pill" id="spk-hdr" style="display:none;"><span class="dot dot-r"></span>SPIKE</div>
+      <div class="hd-pill"><span class="dot dot-a"></span><span id="hd-status">Idle</span></div>
+      <div id="hd-clock">00:00:00</div>
+    </div>
+  </div>
+
+  <!-- ──── LEFT: CHAT ──── -->
+  <div id="col-chat" class="panel-col">
+    <div class="pane-hd">
+      <div class="pane-eyebrow">Mission Control</div>
+      <div class="pane-title">Project Intake</div>
+    </div>
+    <div class="greet">
+      <span class="hi">Hi <span id="greet-name">there</span>! 👋</span> Describe your cloud project — I'll design your architecture, simulate budget lifecycle, score carbon footprint, and give a Well-Architected review.
+    </div>
+    <div class="chip-bar">
+      <span style="font-family:var(--f-body);font-size:9px;color:var(--tx-3);align-self:center;">Try:</span>
+      <button class="chip" onclick="chipSend(this)">Mobile backend</button>
+      <button class="chip" onclick="chipSend(this)">Static website</button>
+      <button class="chip" onclick="chipSend(this)">ML model</button>
+      <button class="chip" onclick="chipSend(this)">Serverless API</button>
+      <button class="chip" onclick="chipSend(this)">Docker app</button>
+      <button class="chip" onclick="chipSend(this)">Data pipeline</button>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-lbl">💰 Budget $</span>
+      <span class="tip-wrap" style="margin-right:2px;">
+        <span class="tip-ico">?</span>
+        <span class="tip-txt">Your monthly AWS spending limit. We'll calculate how long it lasts and warn you when the cost is high.</span>
+      </span>
+      <input type="number" id="bgt-in" class="ctrl-inp" placeholder="e.g. 100" min="1" value="100"/>
+      <span class="ctrl-lbl">/ mo</span>
+    </div>
+    <div class="spike-row">
+      <span class="spike-lbl">⚡ Simulate Traffic Spike
+        <span class="tip-wrap">
+          <span class="tip-ico" style="border-color:rgba(255,154,154,.4);color:rgba(255,154,154,.6);">?</span>
+          <span class="tip-txt">Simulates a sudden 10× surge in traffic (like Black Friday). See how costs spike and how AWS auto-scaling responds.</span>
+        </span>
+        <span class="spike-chip" id="spk-chip">10× LOAD</span>
+      </span>
+      <label class="tog"><input type="checkbox" id="spk-tog" onchange="onSpike()"/><span class="tog-sl"></span></label>
+    </div>
+    <div id="feed" class="scroll-inner"></div>
+    <div class="chat-bar">
+      <textarea id="usr-in" placeholder="e.g. I want to host a mobile app for 1000 users with a database… (Enter to send)" rows="1"
+        oninput="autoH(this)" onkeydown="handleKey(event)"></textarea>
+      <button id="send-btn" onclick="doSend()" title="Send">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#07080F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ──── CENTER: CANVAS ──── -->
+  <div id="col-canvas">
+    <div class="cv-topbar">
+      <div class="cv-svc" id="cv-svc">LIVE CANVAS</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div class="tf-tabs">
+          <button class="tf-tab on" onclick="setTf('hr',this)">1H</button>
+          <button class="tf-tab" onclick="setTf('day',this)">1D</button>
+          <button class="tf-tab" onclick="setTf('wk',this)">1W</button>
+          <button class="tf-tab" onclick="setTf('mo',this)">1M</button>
+        </div>
+        <div class="cv-status"><span class="dot dot-g" style="width:4px;height:4px;"></span><span id="cv-st">Awaiting input</span></div>
+      </div>
+    </div>
+    <div id="live-cv">
+      <div id="empty-st">
+        <div class="e-ring">☁️</div>
+        <p id="empty-msg"><span>Pick a suggestion above or describe your project to get started.</span></p>
+      </div>
+      <svg id="diag-svg">
+        <defs>
+          <linearGradient id="cg" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#FF9900" stop-opacity=".08"/>
+            <stop offset="50%" stop-color="#FF9900" stop-opacity="1"/>
+            <stop offset="100%" stop-color="#FF9900" stop-opacity=".08"/>
+          </linearGradient>
+          <linearGradient id="cg-r" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#FF4D6D" stop-opacity=".08"/>
+            <stop offset="50%" stop-color="#FF4D6D" stop-opacity="1"/>
+            <stop offset="100%" stop-color="#FF4D6D" stop-opacity=".08"/>
+          </linearGradient>
+          <filter id="gl"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+      </svg>
+      <div id="spk-ov">
+        <div class="spk-badge"><span class="spk-dot"></span>BLACK FRIDAY — 10× LOAD</div>
+        <div class="as-nodes" id="as-nodes"></div>
+      </div>
+    </div>
+    <div class="cost-band">
+      <div class="cm"><span class="cm-lbl">Per Hour</span><span class="cm-v" id="cm-hr">—</span><span class="cm-s">USD/hr</span></div>
+      <div class="csep"></div>
+      <div class="cm"><span class="cm-lbl">Per Day</span><span class="cm-v" id="cm-day">—</span><span class="cm-s">USD/day</span></div>
+      <div class="csep"></div>
+      <div class="cm"><span class="cm-lbl">Per Week</span><span class="cm-v" id="cm-wk">—</span><span class="cm-s">USD/wk</span></div>
+      <div class="csep"></div>
+      <div class="cm"><span class="cm-lbl">Per Month</span><span class="cm-v" id="cm-mo">—</span><span class="cm-s">USD/mo</span></div>
+      <div style="flex:1"></div>
+      <div class="cm" style="min-width:80px;">
+        <span class="cm-lbl" style="display:flex;align-items:center;gap:4px;">
+          Confidence
+          <span class="tip-wrap">
+            <span class="tip-ico">?</span>
+            <span class="tip-txt">How closely your description matched this AWS service. Higher % = stronger match. Below 70% means try being more specific.</span>
+          </span>
+        </span>
+        <span class="cm-v" id="cm-cf" style="color:var(--blue)">—</span>
+        <span class="cm-s">match</span>
+      </div>
+    </div>
+    <div class="cv-foot">
+      <span class="cv-foot-nm" id="cv-foot-nm">No service selected</span>
+      <span class="tip-wrap">
+        <button class="iac-btn" id="iac-btn" onclick="openIaC()" disabled>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          Export CloudFormation
+        </button>
+        <span class="tip-txt" style="right:0;left:auto;transform:none;">CloudFormation is AWS's tool for deploying infrastructure as code. This generates a ready-to-use template you can deploy in your AWS account.</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- ──── RIGHT: FINANCE ──── -->
+  <div id="col-fin" class="panel-col">
+    <div class="pane-hd">
+      <div class="pane-eyebrow">Financial Intelligence</div>
+      <div class="pane-title">Budget Lifecycle</div>
+    </div>
+    <div class="fin-ph" id="fin-ph">
+      <div class="fin-ph-ico">📊</div>
+      <p>e.g. <strong style="color:var(--amber);">$47/mo estimated</strong> · budget lasts <strong style="color:var(--tx-2);">68 days</strong> · 3 cost-saving tips</p>
+      <p style="margin-top:6px;font-size:10px;color:var(--tx-3);">Describe your project above to see your personalised breakdown.</p>
+    </div>
+    <div id="fin-live" style="display:none;" class="scroll-inner">
+
+      <!-- Rings -->
+      <div class="sec reveal s1">
+        <div class="sec-lbl">Budget Durability</div>
+        <div class="rings-row">
+          <div class="ring-card">
+            <div class="rc-lbl">Days Left</div>
+            <svg class="ring-svg" width="84" height="84" viewBox="0 0 90 90">
+              <circle class="r-track" cx="45" cy="45" r="36" stroke-width="6"/>
+              <circle class="r-fill" id="r-days" cx="45" cy="45" r="36" stroke-width="6" stroke="#FF9900" stroke-dasharray="226.2" stroke-dashoffset="226.2" transform="rotate(-90 45 45)" filter="url(#gl)"/>
+              <text class="r-val" id="rv-days" x="45" y="43">—</text>
+              <text class="r-sub" x="45" y="56">days</text>
+            </svg>
+            <div class="rc-sub" id="rs-days">—</div>
+          </div>
+          <div class="ring-card">
+            <div class="rc-lbl">Monthly Usage</div>
+            <svg class="ring-svg" width="84" height="84" viewBox="0 0 90 90">
+              <circle class="r-track" cx="45" cy="45" r="36" stroke-width="6"/>
+              <circle class="r-fill" id="r-pct" cx="45" cy="45" r="36" stroke-width="6" stroke="#00A8E1" stroke-dasharray="226.2" stroke-dashoffset="226.2" transform="rotate(-90 45 45)" filter="url(#gl)"/>
+              <text class="r-val" id="rv-pct" x="45" y="43" style="fill:#00A8E1">—</text>
+              <text class="r-sub" x="45" y="56">of budget</text>
+            </svg>
+            <div class="rc-sub" id="rs-pct">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Burn table -->
+      <div class="sec reveal s2">
+        <div class="sec-lbl">Consumption Breakdown</div>
+        <div id="burn-tbl"></div>
+      </div>
+
+      <!-- Depletion countdown -->
+      <div class="sec reveal s3">
+        <div class="sec-lbl">Live Depletion Countdown</div>
+        <div class="depl-box">
+          <div class="depl-ttl">⚠ Budget Burn Countdown</div>
+          <div class="depl-grid">
+            <div class="depl-cell"><div class="depl-n" id="dc-d">--</div><div class="depl-u">Days</div></div>
+            <div class="depl-cell"><div class="depl-n" id="dc-h">--</div><div class="depl-u">Hours</div></div>
+            <div class="depl-cell"><div class="depl-n" id="dc-m">--</div><div class="depl-u">Mins</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Confidence -->
+      <div class="sec reveal s4">
+        <div class="sec-lbl">Recommendation Quality</div>
+        <div class="conf-row">
+          <span class="conf-lbl">Confidence</span>
+          <div class="conf-trk"><div class="conf-fill" id="cf-fill"></div></div>
+          <span class="conf-pct" id="cf-pct">0%</span>
+        </div>
+      </div>
+
+      <!-- Why this fits -->
+      <div class="sec reveal s5">
+        <div class="sec-lbl">Why This Fits</div>
+        <div id="why-txt"></div>
+        <a id="docs-lnk" class="docs-lnk" href="#" target="_blank" rel="noopener noreferrer">
+          View AWS Docs <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </a>
+      </div>
+
+      <!-- Features -->
+      <div class="sec">
+        <div class="sec-lbl">Service Features</div>
+        <div class="feat-chips" id="feat-chips"></div>
+      </div>
+
+      <!-- ACCORDION: Green Ops -->
+      <div class="acc">
+        <button class="acc-btn" onclick="toggleAcc(this)">
+          🌱 Green Ops &amp; Sustainability Score
+          <span class="acc-ico">▾</span>
+        </button>
+        <div class="acc-body">
+          <div class="acc-inner">
+            <div class="eco-w" id="eco-w">
+              <div class="eco-hdr">
+                <div class="eco-ttl">🍃 Eco Rating</div>
+                <div class="eco-grade" id="eco-gr">—</div>
+              </div>
+              <div class="eco-bar-r">
+                <div class="eco-trk"><div class="eco-fill" id="eco-fill"></div></div>
+                <span class="eco-num" id="eco-num">—</span>
+              </div>
+              <div class="eco-tips" id="eco-tips"></div>
+              <div class="eco-rgn" id="eco-rgn"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ACCORDION: Well-Architected -->
+      <div class="acc">
+        <button class="acc-btn" onclick="toggleAcc(this)">
+          🏛 Well-Architected Advisor
+          <span class="acc-ico">▾</span>
+        </button>
+        <div class="acc-body">
+          <div class="acc-inner">
+            <div id="wa-ps"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ACCORDION: CloudFormation preview -->
+      <div class="acc" style="border-bottom:none;">
+        <button class="acc-btn" onclick="toggleAcc(this)">
+          ☁ CloudFormation Resource Preview
+          <span class="acc-ico">▾</span>
+        </button>
+        <div class="acc-body">
+          <div class="acc-inner">
+            <div id="cfn-preview" style="font-family:var(--f-code);font-size:10px;color:var(--tx-2);line-height:1.7;background:var(--bg-surface);border:1px solid var(--bd);border-radius:8px;padding:10px;max-height:160px;overflow-y:auto;"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /#fin-live -->
+  </div><!-- /#col-fin -->
+
+</div><!-- /#cockpit -->
+
+<script>
+/* ── Stars ── */
+(()=>{const c=document.getElementById('stars');for(let i=0;i<130;i++){const s=document.createElement('div');s.className='star';const sz=Math.random()*1.7+.3;s.style.cssText=`width:${sz}px;height:${sz}px;top:${Math.random()*100}%;left:${Math.random()*100}%;--op:${(Math.random()*.48+.07).toFixed(2)};--dur:${(Math.random()*4+2).toFixed(1)}s;`;c.appendChild(s);}})();
+
+/* ── User name ── */
+let userName = localStorage.getItem('awsPlanner_userName') || '';
+
+function applyUserName(){
+  document.getElementById('greet-name').textContent = userName;
+}
+
+function saveUserName(){
+  const inp = document.getElementById('name-inp');
+  const val = (inp.value || '').trim();
+  if(!val){ inp.focus(); inp.style.borderColor='#FF4D6D'; inp.style.boxShadow='0 0 0 3px rgba(255,77,109,0.15)'; return; }
+  userName = val;
+  localStorage.setItem('awsPlanner_userName', userName);
+  const modal = document.getElementById('name-modal');
+  modal.style.opacity = '0';
+  modal.style.transition = 'opacity .28s';
+  setTimeout(() => modal.style.display = 'none', 300);
+  applyUserName();
+}
+
+// On load: show modal if no saved name, otherwise greet immediately
+(function initName(){
+  if(userName){
+    document.getElementById('name-modal').style.display = 'none';
+    applyUserName();
+  } else {
+    // Focus the input after modal renders
+    setTimeout(() => { const i = document.getElementById('name-inp'); if(i) i.focus(); }, 120);
+  }
+})();
+
+/* ── Clock ── */
+(function tick(){document.getElementById('hd-clock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false});setTimeout(tick,1000);})();
+
+/* ── Accordion ── */
+function toggleAcc(btn){
+  const body=btn.nextElementSibling;
+  const open=btn.classList.toggle('open');
+  body.classList.toggle('open',open);
+  // If opening eco or wa, re-trigger fill animations
+  if(open && lastRec){
+    const id=btn.textContent.trim();
+    if(id.includes('Green')) setTimeout(()=>renderEco(lastRec),30);
+    if(id.includes('Well'))  setTimeout(()=>renderWA(lastRec),30);
+    if(id.includes('Cloud')) renderCFNPreview(lastRec);
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   KNOWLEDGE BASE
+═══════════════════════════════════════════════ */
+const SVCS=[
+  {id:"ec2",name:"Amazon EC2",subtitle:"Elastic Compute Cloud",
+   keywords:["backend","server","virtual machine","vm","api server","web server","node","django","flask","spring","linux","windows","host","hosting","1000 users","users","mobile backend","compute","instance","vps","deploy","application server","rest api"],
+   costRange:{min:8,max:80},costLabel:"t3.micro → t3.medium",
+   whyText:"EC2 gives you a fully configurable virtual server in the cloud. A t3.micro (~$8/mo) is Free Tier eligible for 12 months. Pair with ALB and RDS for a production-grade three-tier architecture.",
+   features:["Auto Scaling","Elastic IPs","Free Tier 12mo","99.99% SLA","SSH Access","AMI Snapshots"],
+   docs:"https://aws.amazon.com/ec2/",confidence:88,
+   eco:{grade:"C",score:62,region:"us-east-1 (Virginia) — 100% renewable",tips:["Use Graviton3 (arm64) for 60% better energy efficiency","Enable Auto Scaling to power down unused capacity overnight","Consider Spot Instances to reuse spare AWS capacity"]},
+   wa:{security:["Restrict SSH with Security Groups — no 0.0.0.0/0","Enable AWS Systems Manager instead of bastion hosts","Encrypt EBS volumes with KMS at zero cost on gp3"],cost:["Right-size with AWS Compute Optimizer","Use Savings Plans for 30–72% discount","Schedule dev/test instances off during non-work hours"],reliability:["Deploy across 2+ Availability Zones","Set up ALB health checks and auto-replacement","Enable CloudWatch alarms for CPU >80%"]},
+   cfn:{type:"AWS::EC2::Instance",extras:["AWS::ElasticLoadBalancingV2::LoadBalancer","AWS::RDS::DBInstance","AWS::EC2::SecurityGroup"]},
+   arch:[{id:"usr",icon:"👤",label:"User",sub:"Client",col:"#58a6ff"},{id:"alb",icon:"⚖️",label:"Load Balancer",sub:"ALB",col:"#d2a8ff"},{id:"ec2",icon:"🖥️",label:"EC2",sub:"t3.micro",col:"#FF9900"},{id:"rds",icon:"🗄️",label:"RDS",sub:"MySQL",col:"#3fb950"}],
+   flows:[["usr","alb"],["alb","ec2"],["ec2","rds"]],
+   spikeScale:{multiplier:10,autoNodes:["EC2 → 4 instances","Auto Scaling triggered","ALB routing active","RDS Read Replica added"]}},
+  {id:"s3",name:"Amazon S3",subtitle:"Simple Storage Service",
+   keywords:["static website","static site","html","css","files","file storage","upload","images","videos","media","bucket","object storage","website hosting","store files","cdn","assets","documents","backup","portfolio","landing page"],
+   costRange:{min:1,max:25},costLabel:"~$0.023/GB stored",
+   whyText:"S3 hosts static websites directly for almost zero cost. 5 GB free every month. Paired with CloudFront CDN it delivers content from 450+ global edge locations with very low latency.",
+   features:["5GB Free/mo","Static Hosting","Versioning","11-Nine Durability","CloudFront CDN","Lifecycle Rules"],
+   docs:"https://aws.amazon.com/s3/",confidence:92,
+   eco:{grade:"A",score:95,region:"us-east-1 (Virginia) — 100% renewable",tips:["S3 is one of AWS's greenest services — shared infrastructure maximises utilisation","Enable Intelligent-Tiering to reduce storage of infrequently accessed data","Use Lifecycle policies to archive cold data to Glacier (90% less energy/GB)"]},
+   wa:{security:["Block all public access; use CloudFront OAC to serve content","Enable Server-Side Encryption (SSE-S3) at no extra cost","Enable S3 Access Logging to audit all object requests"],cost:["S3 Intelligent-Tiering removes guesswork on access patterns","Use Lifecycle rules to expire old versions automatically","Request Requester Pays for large data-sharing use cases"],reliability:["Enable versioning to protect against accidental deletes","Use Cross-Region Replication for DR in another region","Set up S3 Event Notifications to detect unexpected deletes"]},
+   cfn:{type:"AWS::S3::Bucket",extras:["AWS::CloudFront::Distribution","AWS::S3::BucketPolicy"]},
+   arch:[{id:"usr",icon:"🌍",label:"Browser",sub:"Visitor",col:"#58a6ff"},{id:"cf",icon:"🌐",label:"CloudFront",sub:"CDN Edge",col:"#d2a8ff"},{id:"s3",icon:"🪣",label:"S3 Bucket",sub:"Static Files",col:"#FF9900"}],
+   flows:[["usr","cf"],["cf","s3"]],
+   spikeScale:{multiplier:10,autoNodes:["CloudFront scales globally","450+ PoPs activated","S3 handles unlimited GETs","No action needed — serverless"]}},
+  {id:"lambda",name:"AWS Lambda",subtitle:"Serverless Functions",
+   keywords:["serverless","function","event driven","trigger","api gateway","microservice","lightweight","pay per use","no server","cron","scheduled","webhook","small function","automation","background task","serverless api","functions"],
+   costRange:{min:0,max:20},costLabel:"1M free requests/month",
+   whyText:"Lambda runs code with zero server management, charging per millisecond. 1 million free invocations per month permanently. Pair with API Gateway for a fully scalable REST API with no idle cost.",
+   features:["1M Free Reqs/mo","Pay-per-ms","Scale to Zero","15min Timeout","8 Runtimes","Event Triggers"],
+   docs:"https://aws.amazon.com/lambda/",confidence:90,
+   eco:{grade:"A+",score:98,region:"Any region — scales to zero when idle",tips:["Lambda is the greenest compute — zero resources consumed when idle","Right-size memory (128MB–1GB) to reduce energy per invocation","Use Graviton2 Lambda runtime for 34% better price-performance per watt"]},
+   wa:{security:["Use least-privilege IAM execution roles per function","Store secrets in Secrets Manager, never in env vars","Enable function URLs with IAM auth instead of open endpoints"],cost:["Monitor duration with X-Ray tracing","Use Lambda Power Tuning to find optimal memory/cost balance","Batch SQS records to reduce total invocation count"],reliability:["Set reserved concurrency to protect downstream services","Configure Dead Letter Queues (DLQ) for async failures","Enable Lambda Destinations for success/failure routing"]},
+   cfn:{type:"AWS::Lambda::Function",extras:["AWS::ApiGateway::RestApi","AWS::DynamoDB::Table","AWS::IAM::Role"]},
+   arch:[{id:"usr",icon:"👤",label:"Client",sub:"HTTP",col:"#58a6ff"},{id:"apigw",icon:"🔀",label:"API Gateway",sub:"REST",col:"#d2a8ff"},{id:"fn",icon:"⚡",label:"Lambda",sub:"Node/Python",col:"#FF9900"},{id:"db",icon:"⚡",label:"DynamoDB",sub:"NoSQL",col:"#3fb950"}],
+   flows:[["usr","apigw"],["apigw","fn"],["fn","db"]],
+   spikeScale:{multiplier:10,autoNodes:["Lambda auto-concurrency raised","API Gateway throttling lifted","DynamoDB On-Demand scales","No pre-warming needed"]}},
+  {id:"rds",name:"Amazon RDS",subtitle:"Relational Database Service",
+   keywords:["database","mysql","postgresql","postgres","sql","relational","rds","aurora","mariadb","db","data","tables","queries","structured data","user data","accounts","transactions","ecommerce","store data"],
+   costRange:{min:15,max:150},costLabel:"db.t3.micro Free Tier",
+   whyText:"RDS is a fully managed relational database with automated backups, patching, and multi-AZ failover. db.t3.micro is Free Tier eligible for 750 hrs/mo. Choose MySQL, PostgreSQL, or Aurora seamlessly.",
+   features:["Auto Backups","Multi-AZ HA","Free db.t3.micro","Read Replicas","Encryption","MySQL/Postgres"],
+   docs:"https://aws.amazon.com/rds/",confidence:85,
+   eco:{grade:"B",score:74,region:"us-east-1 (Virginia) — 100% renewable",tips:["Enable Aurora Serverless v2 to scale to zero when idle","Stop dev/test RDS instances outside working hours (saves ~65%)","Use gp3 storage volumes — 20% more efficient than gp2"]},
+   wa:{security:["Place RDS in private subnets — never expose publicly","Enable RDS Encryption at Rest with KMS","Rotate DB credentials automatically with Secrets Manager"],cost:["Use Aurora Serverless v2 for variable workloads","Enable RDS Proxy to reduce instance size needs","Reserved Instances provide up to 69% discount"],reliability:["Enable Multi-AZ for <1min failover","Configure automated backups with 7–35 day retention","Test failover quarterly with AWS FIS"]},
+   cfn:{type:"AWS::RDS::DBInstance",extras:["AWS::RDS::DBSubnetGroup","AWS::EC2::SecurityGroup","AWS::SecretsManager::Secret"]},
+   arch:[{id:"app",icon:"🖥️",label:"App Server",sub:"EC2/Lambda",col:"#58a6ff"},{id:"primary",icon:"🗄️",label:"RDS Primary",sub:"MySQL",col:"#FF9900"},{id:"replica",icon:"🗄️",label:"Read Replica",sub:"Scale-out",col:"#3fb950"}],
+   flows:[["app","primary"],["primary","replica"]],
+   spikeScale:{multiplier:3,autoNodes:["RDS Read Replica promoted","RDS Proxy pools connections","Aurora Serverless scales ACUs","Query cache warmed"]}},
+  {id:"dynamodb",name:"Amazon DynamoDB",subtitle:"NoSQL Database",
+   keywords:["nosql","dynamodb","key value","key-value","document","json","mongodb","flexible schema","real time","real-time","high throughput","gaming","leaderboard","chat","sessions","mobile app","iot","fast reads","millions of requests","scale automatically"],
+   costRange:{min:0,max:30},costLabel:"25GB free forever",
+   whyText:"DynamoDB delivers single-digit millisecond reads at any scale with 25 GB of free storage forever. Auto-scales from zero to millions of RPS. Perfect for mobile apps, gaming, real-time chat, and IoT.",
+   features:["25GB Free Forever","<5ms Latency","Auto Scaling","Global Tables","TTL Items","Streams"],
+   docs:"https://aws.amazon.com/dynamodb/",confidence:87,
+   eco:{grade:"A",score:91,region:"Any region — shared serverless infrastructure",tips:["Use TTL to auto-expire stale items — reduces storage energy","On-Demand capacity mode eliminates over-provisioning waste","Streams enable event-driven architectures, avoiding polling"]},
+   wa:{security:["Use VPC Endpoints to access DynamoDB privately","Apply fine-grained IAM conditions for row-level security","Encryption at Rest enabled by default at no cost"],cost:["Use On-Demand mode for unpredictable traffic","Set TTL on session/cache items to auto-delete and reduce costs","Use DynamoDB Standard-IA table class for cold data"],reliability:["Enable PITR for continuous backup with 35-day window","Use Global Tables for active-active multi-region replication","Design partition keys with high cardinality to avoid hot spots"]},
+   cfn:{type:"AWS::DynamoDB::Table",extras:["AWS::Lambda::Function","AWS::ApiGateway::RestApi","AWS::IAM::Role"]},
+   arch:[{id:"app",icon:"📱",label:"Mobile App",sub:"iOS/Android",col:"#58a6ff"},{id:"apigw",icon:"🔀",label:"API Gateway",sub:"REST",col:"#d2a8ff"},{id:"fn",icon:"⚡",label:"Lambda",sub:"Logic",col:"#d2a8ff"},{id:"ddb",icon:"⚡",label:"DynamoDB",sub:"25GB Free",col:"#FF9900"}],
+   flows:[["app","apigw"],["apigw","fn"],["fn","ddb"]],
+   spikeScale:{multiplier:10,autoNodes:["DynamoDB On-Demand scales","Lambda concurrency burst","API Gateway throttle lifted","DAX cache recommended"]}},
+  {id:"sagemaker",name:"Amazon SageMaker",subtitle:"Machine Learning Platform",
+   keywords:["machine learning","ml","ai","model","train","training","neural network","deep learning","tensorflow","pytorch","prediction","inference","nlp","computer vision","data science","jupyter","notebook","algorithm","classification","regression","clustering"],
+   costRange:{min:0,max:100},costLabel:"Free Tier notebook hours",
+   whyText:"SageMaker is the complete ML lifecycle platform — from data labeling to training, evaluation, and real-time inference endpoints. Managed Jupyter notebooks start free. Autopilot builds and tunes models automatically.",
+   features:["Managed Notebooks","Built-in Algos","Auto ML","Model Registry","A/B Endpoints","Free Tier"],
+   docs:"https://aws.amazon.com/sagemaker/",confidence:91,
+   eco:{grade:"C",score:58,region:"us-east-1 (Virginia) — 100% renewable",tips:["Use Spot training instances for up to 90% cost and energy savings","Shut down notebook instances when idle — they bill per hour","Use Inferentia2 chips for inference — 40% better energy efficiency than GPU"]},
+   wa:{security:["Run Studio in VPC-only mode to isolate the network","Use Model Cards to document training data and intended use","Enable encryption in transit and at rest for all resources"],cost:["Use Managed Spot Training to reduce costs by up to 90%","Right-size inference endpoints — ml.t3.medium handles <100 RPS","Use Serverless Inference for infrequent predictions"],reliability:["Deploy with Multi-Model Endpoints to consolidate costs","Enable Model Monitor to detect data drift","Use SageMaker Pipelines for reproducible ML workflows"]},
+   cfn:{type:"AWS::SageMaker::NotebookInstance",extras:["AWS::SageMaker::Model","AWS::SageMaker::EndpointConfig","AWS::IAM::Role"]},
+   arch:[{id:"data",icon:"📦",label:"S3 Dataset",sub:"Training Data",col:"#58a6ff"},{id:"sm",icon:"🧠",label:"SageMaker",sub:"Training Job",col:"#FF9900"},{id:"mdl",icon:"📊",label:"Model Store",sub:"Registry",col:"#d2a8ff"},{id:"ep",icon:"🚀",label:"Endpoint",sub:"Real-time",col:"#3fb950"}],
+   flows:[["data","sm"],["sm","mdl"],["mdl","ep"]],
+   spikeScale:{multiplier:4,autoNodes:["Endpoint auto-scales","Multi-Model Endpoint","Async Inference queue","Provisioned concurrency"]}},
+  {id:"amplify",name:"AWS Amplify",subtitle:"Full-Stack Web & Mobile",
+   keywords:["react","vue","angular","next.js","nextjs","frontend","full stack","fullstack","mobile app","ios","android","react native","authentication","auth","cognito","graphql","appsync","social login","oauth","full-stack","jamstack"],
+   costRange:{min:0,max:30},costLabel:"5GB hosting free",
+   whyText:"Amplify turns a GitHub repo into a fully deployed full-stack app with CI/CD, Cognito auth, GraphQL API, and global hosting in under an hour. Free tier covers 5 GB storage and 15 GB bandwidth per month.",
+   features:["Git CI/CD","Cognito Auth","GraphQL API","5GB Free","Custom Domains","React/Vue/Angular"],
+   docs:"https://aws.amazon.com/amplify/",confidence:86,
+   eco:{grade:"A",score:89,region:"Global edge — CloudFront network",tips:["Amplify Hosting uses CloudFront's renewable-energy-backed CDN","Cognito is serverless — zero idle energy for authentication","Use AppSync caching to reduce Lambda/DynamoDB invocations"]},
+   wa:{security:["Enable Cognito MFA for all user pools","Use Parameter Store for environment variables, not plaintext","Configure HTTPS-only with HSTS headers in custom headers"],cost:["Amplify free tier covers most student projects entirely","Use AppSync caching to reduce resolver invocations","Cognito free tier covers 50,000 MAUs"],reliability:["Deploy to multiple environments (dev/staging/prod)","Use Amplify Previews for every pull request","Enable CloudWatch alarms on AppSync latency >1s"]},
+   cfn:{type:"AWS::Amplify::App",extras:["AWS::Cognito::UserPool","AWS::AppSync::GraphQLApi","AWS::Amplify::Branch"]},
+   arch:[{id:"git",icon:"🐙",label:"GitHub",sub:"Git Push",col:"#58a6ff"},{id:"amp",icon:"📱",label:"Amplify",sub:"Build+Deploy",col:"#FF9900"},{id:"cog",icon:"🔐",label:"Cognito",sub:"Auth",col:"#d2a8ff"},{id:"aps",icon:"🔀",label:"AppSync",sub:"GraphQL",col:"#3fb950"}],
+   flows:[["git","amp"],["amp","cog"],["amp","aps"]],
+   spikeScale:{multiplier:10,autoNodes:["CloudFront handles global spike","AppSync scales serverlessly","DynamoDB On-Demand active","Cognito scales to millions"]}},
+  {id:"fargate",name:"AWS Fargate",subtitle:"Serverless Containers",
+   keywords:["docker","container","kubernetes","ecs","microservices","containerize","dockerfile","containerized","pod","k8s","orchestration","scale containers","devops","ci cd","pipeline","continuous deployment"],
+   costRange:{min:10,max:120},costLabel:"~$0.04/vCPU/hour",
+   whyText:"Fargate runs Docker containers with zero cluster management. Specify CPU and memory, push your image, and AWS handles placement, scaling, and health checks. Ideal for containerised microservices.",
+   features:["No Cluster Mgmt","Pay per vCPU","ECS & EKS","Auto Scaling","IAM Task Roles","VPC Networking"],
+   docs:"https://aws.amazon.com/fargate/",confidence:80,
+   eco:{grade:"B",score:71,region:"us-east-1 (Virginia) — 100% renewable",tips:["Use Fargate Spot for non-critical tasks — 70% cheaper and uses spare capacity","Right-size task CPU/memory — over-provisioning wastes energy","ARM/Graviton2 Fargate uses 60% less energy than x86"]},
+   wa:{security:["Use ECS Task IAM roles — never instance-level credentials","Scan container images with ECR on push","Run tasks in private subnets with NAT Gateway only"],cost:["Use Fargate Spot for batch workloads","Enable ECS Service Auto Scaling to match demand","Savings Plans for Fargate at up to 52% discount"],reliability:["Zero-downtime deploys with minimum healthy percent=100","Use ALB health checks with short intervals","Deploy across 3 AZs with spread placement"]},
+   cfn:{type:"AWS::ECS::Service",extras:["AWS::ECS::TaskDefinition","AWS::ElasticLoadBalancingV2::LoadBalancer","AWS::ECR::Repository"]},
+   arch:[{id:"ecr",icon:"📦",label:"ECR",sub:"Image",col:"#58a6ff"},{id:"fg",icon:"🐳",label:"Fargate",sub:"ECS Task",col:"#FF9900"},{id:"alb",icon:"⚖️",label:"ALB",sub:"Load Balancer",col:"#d2a8ff"},{id:"db",icon:"🗄️",label:"RDS",sub:"Database",col:"#3fb950"}],
+   flows:[["ecr","fg"],["fg","alb"],["fg","db"]],
+   spikeScale:{multiplier:8,autoNodes:["ECS scales to 8 tasks","ALB distributes traffic","Target Tracking at 60% CPU","Fargate Spot added"]}},
+  {id:"glue",name:"AWS Glue + Athena",subtitle:"Serverless Data Pipeline",
+   keywords:["data pipeline","etl","data lake","analytics","big data","s3 analytics","query","glue","athena","data processing","batch","spark","crawl","catalog","data warehouse"],
+   costRange:{min:5,max:80},costLabel:"$1/DPU-hour (Glue)",
+   whyText:"Glue crawls and catalogs your S3 data lake, then Athena queries it with standard SQL — no servers to provision. Pay only per data scanned ($5/TB with Athena).",
+   features:["Serverless ETL","SQL on S3","Pay-per-scan","Auto Schema","PySpark Jobs","Free 1M reqs"],
+   docs:"https://aws.amazon.com/glue/",confidence:83,
+   eco:{grade:"B",score:78,region:"us-east-1 (Virginia) — 100% renewable",tips:["Convert data to Parquet/ORC — Athena scans 85% less data","Partition S3 data by date/region to minimise scan footprint","Schedule Glue jobs during off-peak hours"]},
+   wa:{security:["Encrypt Glue data catalog with KMS and restrict with Lake Formation","Use Glue Connection credentials in Secrets Manager","Enable VPC endpoints for S3 to keep data transfer private"],cost:["Use Glue 4.0 for 2× faster Spark jobs at same DPU cost","Convert raw data to Parquet — reduce Athena costs by 85%","Use Athena query result reuse to avoid re-running queries"],reliability:["Enable Glue Job Bookmarks for idempotent incremental loads","Set up Glue triggers with retry logic for transient failures","Monitor data quality with Glue DataBrew rules"]},
+   cfn:{type:"AWS::Glue::Job",extras:["AWS::Athena::WorkGroup","AWS::S3::Bucket","AWS::Glue::Database"]},
+   arch:[{id:"src",icon:"📥",label:"Data Source",sub:"S3 / DB",col:"#58a6ff"},{id:"glue",icon:"⚙️",label:"Glue ETL",sub:"Transform",col:"#FF9900"},{id:"lake",icon:"🪣",label:"S3 Data Lake",sub:"Parquet",col:"#d2a8ff"},{id:"ath",icon:"🔍",label:"Athena",sub:"SQL Query",col:"#3fb950"}],
+   flows:[["src","glue"],["glue","lake"],["lake","ath"]],
+   spikeScale:{multiplier:5,autoNodes:["Glue DPUs scale horizontally","Athena concurrent queries raised","S3 scales infinitely","Results cached in Athena"]}}
+];
+
+const EX={
+  "Mobile backend":"I want to host a small mobile backend with 1000 users and a MySQL database for user accounts.",
+  "Static website":"I need to host a static website with HTML, CSS and images for my portfolio.",
+  "ML model":"I want to train and deploy a machine learning model using PyTorch for image classification.",
+  "Serverless API":"I want a serverless REST API with event-driven functions, paying only per request.",
+  "Docker app":"I have a dockerized microservices app and want containers without managing servers.",
+  "Data pipeline":"I need a data pipeline to process and query large datasets stored in S3 with SQL."
+};
+
+/* ═══ ENGINE ═══ */
+function scoreS(svc,txt){const t=txt.toLowerCase();let s=0;for(const k of svc.keywords){if(t.includes(k.toLowerCase()))s+=k.split(' ').length>1?3:1;}return s;}
+function estMo(svc,txt){const t=txt.toLowerCase();const{min,max}=svc.costRange;const hi=/million|enterprise|large scale|high traffic/.test(t);const mid=/1[,\s]?000|thousand|medium|growing/.test(t);return Math.round((hi?max*.85:mid?min+(max-min)*.4:min+(max-min)*.15)*100)/100;}
+function bkd(mo){return{mo,wk:mo/4.345,day:mo/30.44,hr:mo/(30.44*24)};}
+function lf(budget,mo){const d=budget/(mo/30.44);return{days:d,pct:Math.min(100,(mo/budget)*100)};}
+
+/* ═══ STATE ═══ */
+let busy=false,lastRec=null,lastBD=null,lastMo=0,lastBgt=100,spikeOn=false,deplTimer=null,deplEnd=null,curIaC='',activeTf='hr';
+const CIRC=2*Math.PI*36;
+
+/* ═══ RINGS ═══ */
+function setRing(id,pct){const el=document.getElementById(id);if(!el)return;el.style.strokeDashoffset=CIRC*(1-Math.min(1,pct/100));}
+
+/* ═══ DEPLETION ═══ */
+function startDepl(days){
+  if(deplTimer)clearInterval(deplTimer);
+  deplEnd=new Date(Date.now()+days*864e5);
+  tickDepl();deplTimer=setInterval(tickDepl,1000);
+}
+function tickDepl(){
+  if(!deplEnd)return;
+  const s=Math.max(0,Math.floor((deplEnd-Date.now())/1000));
+  document.getElementById('dc-d').textContent=String(Math.floor(s/86400)).padStart(2,'0');
+  document.getElementById('dc-h').textContent=String(Math.floor(s%86400/3600)).padStart(2,'0');
+  document.getElementById('dc-m').textContent=String(Math.floor(s%3600/60)).padStart(2,'0');
+}
+
+/* ═══ ODOMETER ═══ */
+function odo(id,from,to,dur=1100,pre='$',dec=2){
+  const el=document.getElementById(id);if(!el)return;
+  const t0=performance.now();
+  (function step(n){const p=Math.min((n-t0)/dur,1),e=1-Math.pow(2,-10*p);el.textContent=pre+(from+(to-from)*e).toFixed(dec);if(p<1)requestAnimationFrame(step);})(performance.now());
+}
+
+/* ═══ TF TABS ═══ */
+function setTf(tf,btn){activeTf=tf;document.querySelectorAll('.tf-tab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');if(lastBD)updateBand(lastBD,spikeOn);}
+function updateBand(bd,spk=false){
+  const m=spk&&lastRec?lastRec.spikeScale.multiplier:1;
+  const fmt=v=>v<.01?'<$0.01':'$'+v.toFixed(v<1?3:2);
+  ['hr','day','wk','mo'].forEach(k=>{
+    const el=document.getElementById('cm-'+k);
+    el.textContent=fmt(bd[k]*m);
+    el.className='cm-v'+(spk?' spk':'');
+  });
+}
+
+/* ═══ BURN TABLE ═══ */
+function buildBRT(bd,budget,spk=false){
+  const rows=[
+    {p:'Per Hour',v:'$'+bd.hr.toFixed(3),pct:(bd.hr/(budget/30.44/24))*100},
+    {p:'Per Day',v:'$'+bd.day.toFixed(2),pct:(bd.day/(budget/30.44))*100},
+    {p:'Per Week',v:'$'+bd.wk.toFixed(2),pct:(bd.wk/(budget/4.345))*100},
+    {p:'Per Month',v:'$'+bd.mo.toFixed(2),pct:(bd.mo/budget)*100},
+  ];
+  document.getElementById('burn-tbl').innerHTML=rows.map(r=>`
+    <div class="brt-row">
+      <span class="brt-p">${r.p}</span>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <span class="brt-v" style="${spk?'color:var(--danger);':''}">${r.v}</span>
+        <div class="brt-bar-w"><div class="brt-bar${spk?' spk':''}" style="width:0" data-w="${Math.min(100,r.pct).toFixed(1)}%"></div></div>
+      </div>
+    </div>`).join('');
+  setTimeout(()=>document.querySelectorAll('.brt-bar').forEach(b=>b.style.width=b.dataset.w),300);
+}
+
+/* ═══ CANVAS DIAGRAM ═══ */
+function renderDiag(svc,spk=false){
+  const svg=document.getElementById('diag-svg');
+  const cv=document.getElementById('live-cv');
+  const emp=document.getElementById('empty-st');
+  emp.style.opacity='0';setTimeout(()=>emp.style.display='none',320);
+  svg.style.display='block';
+  [...svg.querySelectorAll(':not(defs):not(defs *)')].forEach(e=>e.remove());
+  const W=cv.offsetWidth||680,H=cv.offsetHeight||240;
+  const nds=svc.arch,nW=104,nH=64,sX=W*.1,eX=W*.9,bY=H*.5;
+  const step=nds.length>1?(eX-sX)/(nds.length-1):0;
+  const yO=[0,-20,20,-13,17];
+  const pos=nds.map((n,i)=>({x:sX+step*i,y:bY+(yO[i%yO.length]||0)}));
+  svc.flows.forEach((fl,fi)=>{
+    const ai=nds.findIndex(n=>n.id===fl[0]),bi=nds.findIndex(n=>n.id===fl[1]);if(ai<0||bi<0)return;
+    const fx=pos[ai].x+nW/2-3,fy=pos[ai].y,tx=pos[bi].x-nW/2+3,ty=pos[bi].y;
+    const cpx=(fx+tx)/2,cpy=(fy+ty)/2-20;const d=`M${fx},${fy} Q${cpx},${cpy} ${tx},${ty}`;
+    const p=mS('path');p.setAttribute('d',d);p.setAttribute('class','conn-path'+(spk?' spk':''));p.style.animationDelay=fi*.25+'s';svg.appendChild(p);
+    const mp=mS('path');mp.setAttribute('d',d);mp.setAttribute('id','mp'+fi);mp.style.display='none';svg.appendChild(mp);
+    const pu=mS('circle');pu.setAttribute('r',spk?'5.5':'4');pu.setAttribute('fill',spk?'#FF4D6D':'#FF9900');pu.setAttribute('filter','url(#gl)');
+    const mo=mS('animateMotion');mo.setAttribute('dur',(spk?.6:1.5+fi*.4)+'s');mo.setAttribute('repeatCount','indefinite');mo.setAttribute('begin',fi*.5+'s');
+    const mr=mS('mpath');mr.setAttributeNS('http://www.w3.org/1999/xlink','href','#mp'+fi);mo.appendChild(mr);pu.appendChild(mo);svg.appendChild(pu);
+    const fl_lbl=['Request','Route','Query','Store','Trigger','Fetch'][fi%6];
+    svg.appendChild(mT(cpx,cpy-9,fl_lbl,'7.5px','rgba(255,153,0,.45)','var(--f-code)',.08));
+  });
+  nds.forEach((nd,i)=>{
+    const px=pos[i].x,py=pos[i].y,x=px-nW/2,y=py-nH/2;
+    const g=mS('g');g.setAttribute('class','cv-node');g.style.setProperty('--nd',i*.1+'s');
+    if(nd.col==='#FF9900'){const h=mS('ellipse');h.setAttribute('cx',px);h.setAttribute('cy',py);h.setAttribute('rx',nW/2+9);h.setAttribute('ry',nH/2+9);h.style.cssText=spk?'fill:rgba(255,77,109,.05);stroke:rgba(255,77,109,.22);stroke-width:1;':'fill:rgba(255,153,0,.04);stroke:rgba(255,153,0,.18);stroke-width:1;';g.appendChild(h);}
+    const rc=mS('rect');rc.setAttribute('x',x);rc.setAttribute('y',y);rc.setAttribute('width',nW);rc.setAttribute('height',nH);rc.setAttribute('rx','12');rc.style.cssText=`fill:rgba(255,255,255,.033);stroke:${nd.col==='#FF9900'?(spk?'rgba(255,77,109,.45)':'rgba(255,153,0,.38)'):'rgba(255,255,255,.07)'};stroke-width:1;`;g.appendChild(rc);
+    const ic=mS('circle');ic.setAttribute('cx',px);ic.setAttribute('cy',y+18);ic.setAttribute('r','11');ic.style.cssText=`fill:${nd.col}16;stroke:${nd.col}40;stroke-width:1;`;g.appendChild(ic);
+    const fo=mS('foreignObject');fo.setAttribute('x',px-8);fo.setAttribute('y',y+8);fo.setAttribute('width','16');fo.setAttribute('height','16');fo.innerHTML=`<div xmlns="http://www.w3.org/1999/xhtml" style="font-size:10px;line-height:16px;text-align:center;">${nd.icon}</div>`;g.appendChild(fo);
+    g.appendChild(mT(px,y+39,nd.label,'10px','#e6edf3','var(--f-head)',0,'600'));
+    g.appendChild(mT(px,y+51,nd.sub,'8px',nd.col==='#FF9900'?(spk?'rgba(255,120,120,.85)':'rgba(255,153,0,.7)'):'#484F58','var(--f-code)',.04));
+    svg.appendChild(g);
+  });
+  const wm=mT(W-10,16,svc.name.toUpperCase(),'8.5px','rgba(255,153,0,.25)','var(--f-code)',.1,'500');wm.setAttribute('text-anchor','end');svg.appendChild(wm);
+}
+function mS(t){return document.createElementNS('http://www.w3.org/2000/svg',t);}
+function mT(x,y,text,sz,fill,family,ls=0,wt='400'){const t=mS('text');t.setAttribute('x',x);t.setAttribute('y',y);t.setAttribute('text-anchor','middle');t.style.cssText=`font-size:${sz};fill:${fill};font-family:${family};letter-spacing:${ls}em;font-weight:${wt};`;t.textContent=text;return t;}
+
+/* ═══ ECO RENDERER ═══ */
+const GC={'A+':'#00E676','A':'#00E676','B':'#69F0AE','C':'#FFD740','D':'#FF6D00','F':'#FF1744'};
+function renderEco(svc){
+  const e=svc.eco;
+  const g=e.grade.replace('+','').charAt(0);
+  const grEl=document.getElementById('eco-gr');grEl.textContent=e.grade;grEl.className='eco-grade';grEl.style.color=GC[e.grade]||'#00E676';grEl.style.textShadow=`0 0 14px ${GC[e.grade]||'#00E676'}`;
+  const fillEl=document.getElementById('eco-fill');fillEl.style.background=`linear-gradient(90deg,${GC[e.grade]||'#00E676'},${GC[e.grade]||'#00E676'}99)`;
+  setTimeout(()=>fillEl.style.width=e.score+'%',50);
+  const numEl=document.getElementById('eco-num');numEl.textContent=e.score+'/100';numEl.style.color=GC[e.grade]||'#00E676';
+  document.getElementById('eco-tips').innerHTML=e.tips.map((t,i)=>`<div class="eco-tip"><span class="eco-td" style="background:${i===0?'#00E676':i===1?'#69F0AE':'#FFD740'};"></span><span>${t}</span></div>`).join('');
+  document.getElementById('eco-rgn').textContent='📍 '+e.region;
+}
+
+/* ═══ WA RENDERER ═══ */
+function renderWA(svc){
+  const wa=svc.wa;
+  const ps=[
+    {key:'security',icon:'🔒',lbl:'Security',cls:'sec',dc:'s',items:wa.security,score:85,col:'var(--blue)'},
+    {key:'cost',icon:'💰',lbl:'Cost Optimization',cls:'cst',dc:'c',items:wa.cost,score:78,col:'var(--amber)'},
+    {key:'reliability',icon:'🛡️',lbl:'Reliability',cls:'rel',dc:'r',items:wa.reliability,score:82,col:'var(--green)'}
+  ];
+  document.getElementById('wa-ps').innerHTML=ps.map(p=>`
+    <div class="wa-p ${p.cls}">
+      <div class="wa-ph"><span class="wa-pico">${p.icon}</span><span class="wa-pnm">${p.lbl}</span><span class="wa-sc" style="color:${p.col}">${p.score}/100</span></div>
+      ${p.items.map(it=>`<div class="wa-item"><span class="wa-d ${p.dc}"></span><span>${it}</span></div>`).join('')}
+    </div>`).join('');
+}
+
+/* ═══ CFN PREVIEW (inside accordion) ═══ */
+function renderCFNPreview(svc){
+  const all=[svc.cfn.type,...(svc.cfn.extras||[])];
+  document.getElementById('cfn-preview').textContent=
+    `// Resources (${all.length})\n`+all.map(t=>`• ${t}`).join('\n')+
+    `\n\n// Parameters\n• EnvironmentName (String)\n• ProjectName (String)\n\n// Open full template →\nClick "Export CloudFormation Template" above`;
+}
+
+/* ═══ IAC FULL MODAL ═══ */
+let curIaCJson='';
+function genCFN(svc){
+  const ts=new Date().toISOString().slice(0,10);
+  const all=[svc.cfn.type,...(svc.cfn.extras||[])];
+  const resources={};
+  const propMap={
+    "AWS::EC2::Instance":{ImageId:"ami-0c55b159cbfafe1f0",InstanceType:"t3.micro",Tags:[{Key:"Project",Value:{Ref:"ProjectName"}}]},
+    "AWS::ElasticLoadBalancingV2::LoadBalancer":{Type:"application",Scheme:"internet-facing"},
+    "AWS::RDS::DBInstance":{DBInstanceClass:"db.t3.micro",Engine:"mysql",AllocatedStorage:"20",StorageEncrypted:true,MultiAZ:false,PubliclyAccessible:false},
+    "AWS::EC2::SecurityGroup":{GroupDescription:"Managed by CloudFormation"},
+    "AWS::S3::Bucket":{BucketEncryption:{ServerSideEncryptionConfiguration:[{ServerSideEncryptionByDefault:{SSEAlgorithm:"AES256"}}]},PublicAccessBlockConfiguration:{BlockPublicAcls:true,BlockPublicPolicy:true,IgnorePublicAcls:true,RestrictPublicBuckets:true},VersioningConfiguration:{Status:"Enabled"}},
+    "AWS::CloudFront::Distribution":{DistributionConfig:{Enabled:true,DefaultRootObject:"index.html",PriceClass:"PriceClass_100"}},
+    "AWS::S3::BucketPolicy":{Bucket:{Ref:"S3BucketResource"},PolicyDocument:{Version:"2012-10-17",Statement:[]}},
+    "AWS::Lambda::Function":{Runtime:"nodejs20.x",Handler:"index.handler",Role:{"Fn::GetAtt":["LambdaRole","Arn"]},Timeout:30,MemorySize:256,Code:{ZipFile:"exports.handler=async(e)=>({statusCode:200,body:'OK'});"}},
+    "AWS::ApiGateway::RestApi":{Name:{Ref:"ProjectName"},EndpointConfiguration:{Types:["REGIONAL"]}},
+    "AWS::DynamoDB::Table":{BillingMode:"PAY_PER_REQUEST",SSESpecification:{SSEEnabled:true},PointInTimeRecoverySpecification:{PointInTimeRecoveryEnabled:true},AttributeDefinitions:[{AttributeName:"pk",AttributeType:"S"},{AttributeName:"sk",AttributeType:"S"}],KeySchema:[{AttributeName:"pk",KeyType:"HASH"},{AttributeName:"sk",KeyType:"RANGE"}]},
+    "AWS::IAM::Role":{AssumeRolePolicyDocument:{Version:"2012-10-17",Statement:[{Effect:"Allow",Principal:{Service:"lambda.amazonaws.com"},Action:"sts:AssumeRole"}]},ManagedPolicyArns:["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"]},
+    "AWS::SageMaker::NotebookInstance":{InstanceType:"ml.t3.medium",RoleArn:{"Fn::GetAtt":["SMRole","Arn"]},VolumeSizeInGB:10},
+    "AWS::SageMaker::Model":{ExecutionRoleArn:{"Fn::GetAtt":["SMRole","Arn"]}},
+    "AWS::SageMaker::EndpointConfig":{ProductionVariants:[{VariantName:"primary",InitialInstanceCount:1,InstanceType:"ml.t3.medium",InitialVariantWeight:1}]},
+    "AWS::Amplify::App":{Repository:"https://github.com/your-org/your-repo"},
+    "AWS::Cognito::UserPool":{AutoVerifiedAttributes:["email"],Policies:{PasswordPolicy:{MinimumLength:8,RequireUppercase:true,RequireLowercase:true,RequireNumbers:true}}},
+    "AWS::AppSync::GraphQLApi":{Name:{Ref:"ProjectName"},AuthenticationType:"AMAZON_COGNITO_USER_POOLS"},
+    "AWS::Amplify::Branch":{AppId:{Ref:"AmplifyApp"},BranchName:"main",EnableAutoBuild:true},
+    "AWS::ECS::Service":{DesiredCount:2,LaunchType:"FARGATE",NetworkConfiguration:{AwsvpcConfiguration:{AssignPublicIp:"DISABLED",SecurityGroups:[],Subnets:[]}}},
+    "AWS::ECS::TaskDefinition":{NetworkMode:"awsvpc",RequiresCompatibilities:["FARGATE"],Cpu:"256",Memory:"512"},
+    "AWS::ECR::Repository":{ImageScanningConfiguration:{ScanOnPush:true}},
+    "AWS::Glue::Job":{Role:{"Fn::GetAtt":["GlueRole","Arn"]},Command:{Name:"glueetl",PythonVersion:"3"},GlueVersion:"4.0",NumberOfWorkers:2,WorkerType:"G.1X"},
+    "AWS::Athena::WorkGroup":{State:"ENABLED",WorkGroupConfiguration:{ResultConfiguration:{OutputLocation:{"Fn::Sub":"s3://${ProjectName}-results/"}}}},
+    "AWS::Glue::Database":{CatalogId:{Ref:"AWS::AccountId"},DatabaseInput:{Name:{Ref:"ProjectName"}}},
+    "AWS::RDS::DBSubnetGroup":{DBSubnetGroupDescription:"RDS subnet group",SubnetIds:[]},
+    "AWS::SecretsManager::Secret":{GenerateSecretString:{GenerateStringKey:"password",PasswordLength:16}}
+  };
+  all.forEach((t,i)=>{
+    const rid=t.split('::').pop()+(i?i:'')+'Resource';
+    resources[rid]={Type:t,Properties:propMap[t]||{Comment:"Configure properties for "+t}};
+  });
+  return JSON.stringify({AWSTemplateFormatVersion:"2010-09-09",Description:`${svc.name} stack — generated by AWS Cloud Budget Lifecycle Planner — ${ts}`,Parameters:{EnvironmentName:{Type:"String",Default:"production",AllowedValues:["production","staging","development"]},ProjectName:{Type:"String",Default:"MyProject"}},Resources:resources,Outputs:{ServiceInfo:{Description:svc.name+" primary resource",Value:{Ref:Object.keys(resources)[0]}},Generator:{Description:"Tool",Value:"AWS Cloud Budget Lifecycle Planner"}},Metadata:{EstimatedMonthlyCostUSD:lastMo,GeneratedAt:new Date().toISOString()}},null,2);
+}
+function openIaC(){
+  if(!lastRec)return;
+  curIaCJson=genCFN(lastRec);
+  const n=[lastRec.cfn.type,...(lastRec.cfn.extras||[])].length;
+  document.getElementById('iac-meta').textContent=`Service: ${lastRec.name}  ·  Resources: ${n}  ·  Format: JSON`;
+  document.getElementById('iac-rc').textContent=n+' resources';
+  document.getElementById('iac-code').textContent=curIaCJson;
+  document.getElementById('iac-modal').classList.add('on');
+}
+function closeIaC(){document.getElementById('iac-modal').classList.remove('on');}
+function copyIaC(){navigator.clipboard.writeText(curIaCJson).catch(()=>{});const b=document.querySelector('.iac-cp');const o=b.innerHTML;b.innerHTML='✓ Copied!';b.style.color='#06D6A0';setTimeout(()=>{b.innerHTML=o;b.style.color='';},2000);}
+function dlIaC(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([curIaCJson],{type:'application/json'}));a.download=`cfn-${lastRec.id}-${Date.now()}.json`;a.click();}
+document.getElementById('iac-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeIaC();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeIaC();});
+
+/* ═══ SPIKE TOGGLE ═══ */
+function onSpike(){
+  spikeOn=document.getElementById('spk-tog').checked;
+  document.getElementById('spk-chip').classList.toggle('on',spikeOn);
+  document.getElementById('spk-hdr').style.display=spikeOn?'flex':'none';
+  document.getElementById('spk-ov').classList.toggle('on',spikeOn);
+  if(!lastRec)return;
+  renderDiag(lastRec,spikeOn);
+  const asC=document.getElementById('as-nodes');
+  asC.innerHTML=spikeOn&&lastRec.spikeScale?.autoNodes
+    ?lastRec.spikeScale.autoNodes.map((n,i)=>`<div class="as-n" style="animation-delay:${i*.1}s"><span class="as-d"></span>${n}</div>`).join(''):'';
+  if(lastBD){
+    const m=spikeOn?lastRec.spikeScale.multiplier:1;
+    const spkMo=lastMo*m;const bd2=bkd(spkMo);
+    updateBand(spikeOn?bd2:lastBD,spikeOn);
+    odo('cm-hr',0,(spikeOn?bd2:lastBD).hr,700,'$',3);
+    const lf2=lf(lastBgt,spikeOn?spkMo:lastMo);
+    setTimeout(()=>{setRing('r-days',Math.min(100,(lf2.days/365)*100));setRing('r-pct',lf2.pct);},80);
+    document.getElementById('rv-days').textContent=lf2.days>999?'999+':Math.round(lf2.days);
+    document.getElementById('rv-pct').textContent=Math.round(lf2.pct)+'%';
+    buildBRT(spikeOn?bd2:lastBD,lastBgt,spikeOn);
+    startDepl(lf2.days);
+    appendMsg('ai',spikeOn
+      ?`🔴 <strong>Spike active — ${lastRec.spikeScale.multiplier}× load.</strong><br><span style="font-size:11px;opacity:.75;">Cost jumps to <strong style="color:var(--danger);">$${spkMo.toFixed(2)}/mo</strong>. $${lastBgt} budget depletes in <strong style="color:var(--danger);">${lf2.days.toFixed(0)} days</strong>.</span>`
+      :'✅ Spike simulation off — metrics reverted to baseline.');
+  }
+}
+
+/* ═══ CHAT ═══ */
+function appendMsg(role,html,delay=0){
+  return new Promise(r=>setTimeout(()=>{
+    const f=document.getElementById('feed');
+    const m=document.createElement('div');m.className='msg '+(role==='ai'?'ai':'u');
+    const av=document.createElement('div');av.className='av '+(role==='ai'?'av-ai':'av-u');av.textContent=role==='ai'?'⚡':'R';
+    const b=document.createElement('div');b.className='mb';
+    b.innerHTML=`<div class="mw">${role==='ai'?'AWS Assistant':userName}</div><div class="mt">${html}</div>`;
+    m.appendChild(av);m.appendChild(b);f.appendChild(m);f.scrollTop=f.scrollHeight;r();
+  },delay));
+}
+function showTyp(){const f=document.getElementById('feed');const el=document.createElement('div');el.id='typ';el.className='msg ai';el.innerHTML=`<div class="av av-ai">⚡</div><div class="mb"><div class="mw">AWS Assistant</div><div class="mt" style="padding:0;"><div class="dots"><span></span><span></span><span></span></div></div></div>`;f.appendChild(el);f.scrollTop=f.scrollHeight;}
+function hideTyp(){const e=document.getElementById('typ');if(e)e.remove();}
+
+/* ═══ CANVAS STATUS ROTATOR ═══ */
+const STATUS_MSGS=[
+  'Thinking about your architecture…',
+  'Estimating costs…',
+  'Checking AWS service fit…',
+  'Calculating budget lifecycle…',
+  'Almost ready…'
+];
+let _statusIdx=0,_statusTimer=null;
+function startStatusRotator(){
+  const el=document.getElementById('empty-msg');
+  if(!el)return;
+  _statusIdx=0;
+  el.innerHTML=`<span style="color:var(--amber)">${STATUS_MSGS[0]}</span>`;
+  _statusTimer=setInterval(()=>{
+    _statusIdx=(_statusIdx+1)%STATUS_MSGS.length;
+    if(el) el.innerHTML=`<span style="color:var(--amber)">${STATUS_MSGS[_statusIdx]}</span>`;
+  },700);
+}
+function stopStatusRotator(){
+  if(_statusTimer){clearInterval(_statusTimer);_statusTimer=null;}
+}
+
+/* ═══ PANEL TRANSITION HELPER ═══ */
+function fadePanel(id,fn){
+  const el=document.getElementById(id);
+  if(!el){fn&&fn();return;}
+  el.classList.add('panel-updating');
+  setTimeout(()=>{fn&&fn();el.classList.remove('panel-updating');},220);
+}
+
+async function doSend(){
+  if(busy)return;
+  const inp=document.getElementById('usr-in');const txt=inp.value.trim();if(txt.length<5)return;
+  const bgt=parseFloat(document.getElementById('bgt-in').value)||100;
+  busy=true;document.getElementById('send-btn').disabled=true;inp.value='';inp.style.height='34px';
+  await appendMsg('u',esc(txt));showTyp();
+  document.getElementById('hd-status').textContent='Analysing…';
+  document.getElementById('cv-st').textContent='Computing…';
+  startStatusRotator();
+  await sl(1050);hideTyp();stopStatusRotator();
+
+  const sc=SVCS.map(s=>({...s,scr:scoreS(s,txt)})).sort((a,b)=>b.scr-a.scr);
+  const best=sc[0],rec=best.scr>0?best:SVCS.find(s=>s.id==='ec2');
+  const mo=estMo(rec,txt),bd=bkd(mo),lfd=lf(bgt,mo);
+  const cf=Math.min(99,rec.confidence+Math.min(best.scr*2,10));const fc=best.scr===0?60:cf;
+  lastRec=rec;lastBD=bd;lastMo=mo;lastBgt=bgt;
+  if(spikeOn){spikeOn=false;document.getElementById('spk-tog').checked=false;document.getElementById('spk-chip').classList.remove('on');document.getElementById('spk-hdr').style.display='none';document.getElementById('spk-ov').classList.remove('on');}
+
+  const cs=mo<1?'< $1.00':'$'+mo.toFixed(2);
+  const ds=lfd.days>365?(lfd.days/30.44).toFixed(0)+' months':lfd.days.toFixed(0)+' days';
+  await appendMsg('ai',`Analysed ✅ — recommending <strong style="color:var(--amber)">${rec.name}</strong> · Eco <strong style="color:${GC[rec.eco.grade]||'#00E676'}">${rec.eco.grade}</strong><br><span style="font-size:11px;opacity:.75;">Cost: <strong style="color:var(--amber)">${cs}/mo</strong> · $${bgt} lasts ~<strong style="color:var(--amber)">${ds}</strong> · Confidence: ${fc}%</span>`);
+
+  /* Canvas */
+  document.getElementById('cv-svc').textContent=rec.name.toUpperCase();
+  document.getElementById('cv-st').textContent='Architecture live';
+  document.getElementById('hd-status').textContent=rec.name;
+  document.getElementById('cv-foot-nm').textContent=rec.name;
+  document.getElementById('iac-btn').disabled=false;
+  renderDiag(rec,false);
+  fadePanel('cost-band',()=>updateBand(bd,false));
+  odo('cm-hr',0,bd.hr,1100,'$',3);odo('cm-day',0,bd.day,1200,'$',2);odo('cm-wk',0,bd.wk,1300,'$',2);odo('cm-mo',0,bd.mo,1400,'$',2);
+  document.getElementById('cm-cf').textContent=fc+'%';
+
+  /* Right panel reveal */
+  document.getElementById('fin-ph').style.display='none';
+  const fl=document.getElementById('fin-live');
+  fl.style.display='block';
+  fl.classList.add('panel-updating');
+  setTimeout(()=>fl.classList.remove('panel-updating'),240);
+  /* Re-apply reveal animations */
+  fl.querySelectorAll('.reveal').forEach(el=>{el.style.animation='none';void el.offsetWidth;el.style.animation='';});
+
+  const dp=Math.min(100,(lfd.days/365)*100);
+  setTimeout(()=>{setRing('r-days',dp);setRing('r-pct',lfd.pct);},280);
+  document.getElementById('rv-days').textContent=lfd.days>999?'999+':Math.round(lfd.days);
+  document.getElementById('rs-days').textContent='on $'+bgt+' budget';
+  document.getElementById('rv-pct').textContent=Math.round(lfd.pct)+'%';
+  document.getElementById('rs-pct').textContent=cs+' of $'+bgt;
+  buildBRT(bd,bgt,false);
+  startDepl(lfd.days);
+  setTimeout(()=>document.getElementById('cf-fill').style.width=fc+'%',320);
+  document.getElementById('cf-pct').textContent=fc+'%';
+  document.getElementById('why-txt').textContent=rec.whyText;
+  document.getElementById('docs-lnk').href=rec.docs;
+  document.getElementById('feat-chips').innerHTML=rec.features.map(f=>`<span class="fc">${f}</span>`).join('');
+
+  /* Auto-render eco/wa/cfn if accordions are open */
+  document.querySelectorAll('.acc-btn.open').forEach(btn=>{
+    const t=btn.textContent.trim();
+    if(t.includes('Green'))renderEco(rec);
+    if(t.includes('Well'))renderWA(rec);
+    if(t.includes('Cloud'))renderCFNPreview(rec);
+  });
+
+  busy=false;document.getElementById('send-btn').disabled=false;
+}
+
+/* ═══ HELPERS ═══ */
+function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doSend();}}
+function autoH(el){el.style.height='34px';el.style.height=Math.min(el.scrollHeight,88)+'px';}
+function fillEx(btn){const v=EX[btn.textContent.trim()]||btn.textContent.trim();const inp=document.getElementById('usr-in');inp.value=v;autoH(inp);inp.focus();}
+function chipSend(btn){const v=EX[btn.textContent.trim()]||btn.textContent.trim();const inp=document.getElementById('usr-in');inp.value=v;autoH(inp);doSend();}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function sl(ms){return new Promise(r=>setTimeout(r,ms));}
+window.addEventListener('resize',()=>{if(lastRec)renderDiag(lastRec,spikeOn);});
+</script>
+</body>
+</html>
