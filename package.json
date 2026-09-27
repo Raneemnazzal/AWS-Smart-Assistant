@@ -1,0 +1,9 @@
+{
+  "name": "nimbo-pricing-lambda",
+  "version": "1.0.0",
+  "description": "Lambda that queries the real AWS Price List API for the Nimbo cost planner frontend",
+  "main": "pricing.js",
+  "dependencies": {
+    "@aws-sdk/client-pricing": "^3.600.0"
+  }
+}
